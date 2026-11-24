@@ -1,12 +1,20 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow, ipcMain, session, shell } from 'electron';
-import { MultiSolverEngine } from '../../../packages/multi-solver/src/index.js';
 import { SqliteProjectStore } from './sqlite-store.js';
 import { resolveEmbeddedPaths } from './engine-paths.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+async function loadMultiSolver() {
+  const packagedUrl = new URL('../packages/multi-solver/src/index.js', import.meta.url);
+  if (fs.existsSync(packagedUrl)) return import(packagedUrl.href);
+  return import('../../../packages/multi-solver/src/index.js');
+}
+
+const { MultiSolverEngine } = await loadMultiSolver();
 const ALLOWED_EXTERNAL_HOSTS = new Set(['www.evrakplus.com', 'evrakplus.com', 'github.com']);
 
 export const SECURITY_CONFIG = Object.freeze({
@@ -127,6 +135,7 @@ function registerIpcHandlers() {
       appVersion: '1.0.0',
       electron: process.versions.electron,
       node: process.versions.node,
+      storageBackend: store?.backend || 'unknown',
       platform: process.platform,
       arch: process.arch,
       cpus: os.cpus().length,
@@ -139,7 +148,7 @@ function registerIpcHandlers() {
   ipcMain.handle('updater:check', () => ({
     currentVersion: '1.0.0',
     updateAvailable: false,
-    releaseFeed: 'https://github.com/evrakplus/evrakplus-ders-dagitim-multi-plus/releases'
+    releaseFeed: 'https://github.com/appoyanarates-ux/evrakplus-multi-plus/releases'
   }));
 }
 

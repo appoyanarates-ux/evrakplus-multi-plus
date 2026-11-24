@@ -1,5 +1,5 @@
 {
-  "name": "@evrakplus/desktop-electron",
+  "name": "evrakplus-multi-plus",
   "version": "1.0.0",
   "description": "EvrakPlus Ders Dağıtım Multi Plus — Windows 64-bit Electron Masaüstü Uygulaması",
   "type": "module",

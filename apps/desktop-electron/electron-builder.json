@@ -11,16 +11,41 @@
   "files": [
     "src/**/*",
     "package.json",
-    "../../packages/core-schema/src/**/*",
-    "../../packages/validator/src/**/*",
-    "../../packages/multi-solver/src/**/*",
-    "../../engines/ortools/adapter.js",
-    "../../engines/timefold/adapter.js",
-    "../../engines/choco/adapter.js",
-    "../../engines/minizinc/adapter.js",
-    "../../engines/minizinc/dzn-generator.js",
-    "../../engines/scip/adapter.js",
-    "../../engines/highs/adapter.js"
+    {
+      "from": "../../packages/core-schema",
+      "to": "packages/core-schema",
+      "filter": ["package.json", "src/**/*.js"]
+    },
+    {
+      "from": "../../packages/validator",
+      "to": "packages/validator",
+      "filter": ["package.json", "src/**/*.js"]
+    },
+    {
+      "from": "../../packages/multi-solver",
+      "to": "packages/multi-solver",
+      "filter": ["package.json", "src/**/*.js"]
+    },
+    {
+      "from": "../../packages/auth-client",
+      "to": "packages/auth-client",
+      "filter": ["package.json", "src/**/*.js"]
+    },
+    {
+      "from": "../../packages/reports",
+      "to": "packages/reports",
+      "filter": ["package.json", "src/**/*.js"]
+    },
+    {
+      "from": "../../packages/sync-engine",
+      "to": "packages/sync-engine",
+      "filter": ["package.json", "src/**/*.js"]
+    },
+    {
+      "from": "../../engines",
+      "to": "engines",
+      "filter": ["*/adapter.js", "minizinc/dzn-generator.js"]
+    }
   ],
   "extraResources": [
     {
@@ -79,8 +104,8 @@
   "publish": [
     {
       "provider": "github",
-      "owner": "evrakplus",
-      "repo": "evrakplus-ders-dagitim-multi-plus"
+      "owner": "appoyanarates-ux",
+      "repo": "evrakplus-multi-plus"
     }
   ]
 }
