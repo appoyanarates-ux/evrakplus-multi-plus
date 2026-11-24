@@ -12,7 +12,7 @@
     "dist:dir": "electron-builder --dir --x64 --config electron-builder.json"
   },
   "devDependencies": {
-    "electron": "^34.3.0",
-    "electron-builder": "^25.1.8"
+    "electron": "34.5.8",
+    "electron-builder": "25.1.8"
   }
 }
