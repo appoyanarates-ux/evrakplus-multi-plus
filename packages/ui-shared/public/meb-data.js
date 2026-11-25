@@ -676,16 +676,15 @@
 
   const TYPES = {
     ilk: {
-      ad: 'İlkokul ve Ortaokul', kisa: 'İlkokul–Ortaokul', grades: [1, 2, 3, 4, 5, 6, 7, 8], src: SRC.ilk,
-      kaynak: 'TTKB 23.09.2026 tarih ve 115 sayılı karar · 2026-2027’den itibaren', officialApproved: false,
-      total: [30, 30, 30, 30, 35, 35, 35, 35], sec: [0, 0, 0, 0, 5, 5, 5, 6], P: 7, poolGrades: [5, 6, 7, 8], pool: POOL_ILK, groups: ['ITB', 'DAD', 'KSS'], groupRule: true,
+      ad: 'Ortaokul', kisa: 'Ortaokul', grades: [5, 6, 7, 8], src: SRC.ilk,
+      kaynak: 'TTKB 23.09.2026 tarih ve 115 sayılı karar · Ortaokul (5–8. sınıf)', officialApproved: false,
+      total: [35, 35, 35, 35], sec: [5, 5, 5, 6], P: 7, poolGrades: [5, 6, 7, 8], pool: POOL_ILK, groups: ['ITB', 'DAD', 'KSS'], groupRule: true,
       z: [
-        ['Türkçe', [10, 10, 8, 8, 6, 6, 5, 5]], ['Matematik', [5, 5, 5, 5, 5, 5, 5, 5]], ['Hayat Bilgisi', [4, 4, 3, 0, 0, 0, 0, 0]], ['Fen Bilimleri', [0, 0, 3, 3, 4, 4, 4, 4]],
-        ['Sosyal Bilgiler', [0, 0, 0, 3, 3, 3, 3, 0]], ['T.C. İnkılap Tarihi ve Atatürkçülük', [0, 0, 0, 0, 0, 0, 0, 2]], ['Yabancı Dil', [0, 2, 2, 2, 3, 3, 4, 4]],
-        ['Din Kültürü ve Ahlak Bilgisi', [0, 0, 0, 2, 2, 2, 2, 2]], ['Görsel Sanatlar', [1, 1, 1, 1, 1, 1, 1, 1]], ['Müzik', [1, 1, 1, 1, 1, 1, 1, 1]],
-        ['Beden Eğitimi ve Oyun', [5, 5, 5, 2, 0, 0, 0, 0]], ['Beden Eğitimi ve Spor', [0, 0, 0, 0, 2, 2, 2, 2]], ['Teknoloji ve Tasarım', [0, 0, 0, 0, 0, 0, 2, 2]],
-        ['Trafik Güvenliği', [0, 0, 0, 1, 0, 0, 0, 0]], ['Bilişim Teknolojileri ve Yazılım', [0, 0, 0, 0, 2, 2, 0, 0]], ['Rehberlik ve Yönlendirme', [0, 0, 0, 0, 1, 1, 1, 1]],
-        ['İnsan Hakları, Vatandaşlık ve Demokrasi', [0, 0, 0, 2, 0, 0, 0, 0]], ['Serbest Etkinlikler', [4, 2, 2, 0, 0, 0, 0, 0]]
+        ['Türkçe', [6, 6, 5, 5]], ['Matematik', [5, 5, 5, 5]], ['Fen Bilimleri', [4, 4, 4, 4]],
+        ['Sosyal Bilgiler', [3, 3, 3, 0]], ['T.C. İnkılap Tarihi ve Atatürkçülük', [0, 0, 0, 2]], ['Yabancı Dil', [3, 3, 4, 4]],
+        ['Din Kültürü ve Ahlak Bilgisi', [2, 2, 2, 2]], ['Görsel Sanatlar', [1, 1, 1, 1]], ['Müzik', [1, 1, 1, 1]],
+        ['Beden Eğitimi ve Spor', [2, 2, 2, 2]], ['Teknoloji ve Tasarım', [0, 0, 2, 2]],
+        ['Bilişim Teknolojileri ve Yazılım', [2, 2, 0, 0]], ['Rehberlik ve Yönlendirme', [1, 1, 1, 1]]
       ]
     },
     iho: {

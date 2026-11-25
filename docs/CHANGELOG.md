@@ -1,5 +1,12 @@
 # DersMatrix Ultimate (by EvrakPlus) — Değişiklik Geçmişi (CHANGELOG)
 
+## [2.2.1] - 2026-11-25
+
+### İyileştirmeler
+- **Klasik Üst Menü Çubuğu Kaldırıldı**: Masaüstü uygulamasında üstteki `File Edit View Window Help` menü çubuğu tamamen kaldırıldı (`Menu.setApplicationMenu(null)` + `removeMenu()`).
+- **Okul Türü — Ortaokul (5–8. sınıf)**: `İlkokul ve Ortaokul (1–8)` seçeneğinden ilkokul (1–4) çıkarılarak **`Ortaokul (5–8. sınıf)`** (haftalık 35 saat) olarak düzenlendi; diğer tüm okul türleri eksiksiz korundu.
+- **Öğretmen Görevlendirmelerinde Düzenlenebilir Haftalık Müsaitlik**: `Ders Görevlendirmeleri → Öğretmen bazında` sekmesindeki öğretmen bilgi kartına doğrudan tıklanarak değiştirilebilen haftalık müsaitlik matrisi eklendi.
+
 ## [2.2.0] - 2026-11-25
 
 ### Yenilikler ve İyileştirmeler

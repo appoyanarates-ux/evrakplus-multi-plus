@@ -79,4 +79,5 @@ test('Electron gömülü motor yolları ve electron-builder ASAR-dışı güvenl
   assert.ok(mainSrc.includes('Content-Security-Policy'));
   assert.ok(mainSrc.includes('printToPDF'));
   assert.ok(mainSrc.includes("ipcMain.handle('export:pdf'"));
+  assert.ok(mainSrc.includes('Menu.setApplicationMenu(null)') && mainSrc.includes('mainWindow.removeMenu()'));
 });

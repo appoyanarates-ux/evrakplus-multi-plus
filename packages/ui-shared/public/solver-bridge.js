@@ -64,7 +64,7 @@
     return {
       v: 3,
       schemaVersion: 3,
-      appVersion: '2.2.0',
+      appVersion: '2.2.1',
       id: uid(),
       revision: 1,
       updatedAt: new Date().toISOString(),

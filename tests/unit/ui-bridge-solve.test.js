@@ -121,6 +121,8 @@ test('MEB social clubs, admin duty exemption, simplified menus & zero GitHub lin
   assert.ok(!menuIds.includes('manual_schedule'));
   assert.ok(!menuIds.includes('rooms'), 'Derslikler ve Binalar must live inside Okul Ayarları');
   assert.ok(menuIds.includes('duty'), 'Dedicated Okul Nöbeti menu must exist');
+  assert.equal(EP.TYPES.ilk.ad, 'Ortaokul');
+  assert.deepEqual([...EP.TYPES.ilk.grades], [5, 6, 7, 8]);
   assert.ok(Array.isArray(EP.VIVID_PALETTE) && EP.VIVID_PALETTE.length >= 30, 'Vivid color palette must have >= 30 distinct colors');
 
   // 4c. Monthly duty generation & schedule-aware strategies

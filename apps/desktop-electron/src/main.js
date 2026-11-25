@@ -4,12 +4,12 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, session, shell } from 'electron';
 import { SqliteProjectStore } from './sqlite-store.js';
 import { resolveEmbeddedPaths } from './engine-paths.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const APP_VERSION = '2.2.0';
+export const APP_VERSION = '2.2.1';
 export const APP_NAME = 'DersMatrix Ultimate';
 
 async function loadMultiSolver() {
@@ -131,6 +131,7 @@ async function openEvrakPlusLoginWindow() {
         webSecurity: true
       }
     });
+    authWindow.removeMenu();
 
     const checkNow = async () => {
       const st = await inspectEvrakPlusSession();
@@ -397,6 +398,7 @@ function createWindow() {
     height: 880,
     minWidth: 960,
     minHeight: 640,
+    autoHideMenuBar: true,
     icon: iconPath,
     title: `${APP_NAME} · v${APP_VERSION}`,
     webPreferences: {
@@ -407,6 +409,7 @@ function createWindow() {
       webSecurity: SECURITY_CONFIG.webSecurity
     }
   });
+  mainWindow.removeMenu();
 
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
@@ -558,6 +561,7 @@ if (app && typeof app.whenReady === 'function') {
     });
 
     app.whenReady().then(() => {
+      Menu.setApplicationMenu(null);
       const dataDir = path.join(app.getPath('userData'), 'data');
       store = new SqliteProjectStore(path.join(dataDir, 'evrakplus.sqlite'));
       const embedded = resolveEmbeddedPaths({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath });

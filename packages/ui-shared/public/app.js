@@ -179,7 +179,7 @@
     $('#mX').addEventListener('click', () => { M.innerHTML = ''; });
   }
 
-  const APP_VER = (bridge && bridge.appVersion) || '2.2.0';
+  const APP_VER = (bridge && bridge.appVersion) || '2.2.1';
   let updateInfo = null;
   let updateProgress = null;
   const isMember = () => Boolean(authUser && (authUser.loggedIn || authUser.entitlementValid));
@@ -1228,6 +1228,10 @@
           <span class="pill ${cls}">${ld}/${op} sa</span>
         </div>`;
       }).join('');
+      const opT = EP.openOf(S, t).tot;
+      const totSlotsT = (+S.school.D || 5) * (+S.school.P || 7);
+      const closedT = Object.values(t.av || {}).filter(v => v === 1).length;
+      const prefT = Object.values(t.av || {}).filter(v => v === 2).length;
       return head + tabs + `<div class="board" style="grid-template-columns:300px minmax(0,1fr)">
         <div>
           <input id="tAssignQ" value="${esc(S.ui.tAssignQ || '')}" placeholder="Öğretmen veya branş ara…" style="width:100%;margin-bottom:8px">
@@ -1236,8 +1240,12 @@
         <div class="card">
           <div class="row" style="justify-content:space-between;margin-bottom:4px">
             <div><h2>${esc(t.name)}</h2><p class="small muted" style="margin-top:2px">${esc(t.branch || 'Branş yok')}${(t.extra || []).length ? ' · Branş dışı tanımlı: ' + (t.extra || []).map(k => SS(k)).join(', ') : ''}</p></div>
-            <span class="pill ${((L[t.id] || 0) > EP.openOf(S, t).tot) ? 'err' : 'ok'}">${L[t.id] || 0} / ${EP.openOf(S, t).tot} saat</span>
+            <span class="pill ${((L[t.id] || 0) > opT) ? 'err' : 'ok'}">${L[t.id] || 0} / ${opT} saat</span>
           </div>
+          <details class="card" open style="background:var(--soft);border:0;margin:12px 0;padding:12px 14px">
+            <summary><b>Haftalık Müsaitlik Durumu</b> <span class="small muted">· Açık: ${opT}/${totSlotsT} saat${closedT ? ` · Kapalı: ${closedT}` : ''}${prefT ? ` · Tercihen boş: ${prefT}` : ''} · Hücreye, güne veya derse tıklayarak anında değiştirin</span></summary>
+            <div style="margin-top:10px">${matrix('t', t)}</div>
+          </details>
           ${teacherAssignSection(t, { standalone: true, draggable: true })}
           ${teacherPoolSection(t)}
         </div>
