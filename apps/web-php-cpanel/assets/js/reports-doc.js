@@ -291,49 +291,218 @@
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   }
 
+  function dutyClosedSet(S) {
+    return new Set(Array.isArray(S.duty && S.duty.closedDates) ? S.duty.closedDates : []);
+  }
+
+  function isoOfDate(dt) {
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+  }
+
+  function weekMondayKey(yr, mo, day) {
+    const dt = new Date(yr, mo - 1, day, 12, 0, 0);
+    const jsDow = dt.getDay();
+    const diff = jsDow === 0 ? -6 : 1 - jsDow;
+    dt.setDate(dt.getDate() + diff);
+    return isoOfDate(dt);
+  }
+
+  function pickDayForTeacher(S, t, candDays, loadsByT, dayLoadCnt, strategy, avoidZeroDay) {
+    if (!candDays.length) return -1;
+    const D = +S.school.D || 5, P = +S.school.P || 7;
+    const a = loadsByT[t.id] || Array(D).fill(0);
+    const open = d => Array.from({ length: P }, (_, p) => (t.av || {})[d + '-' + p] !== 1).some(Boolean);
+    const taught = candDays.filter(d => a[d] > 0);
+    const openCands = candDays.filter(open);
+    const days = (avoidZeroDay && taught.length) ? taught : (openCands.length ? openCands : candDays);
+    if (!days.length) return -1;
+    const tot = d => (dayLoadCnt[d] || 0);
+    if (strategy === 'min_lessons') {
+      const minL = Math.min(...days.map(d => a[d]));
+      const near = days.filter(d => a[d] <= minL + 1);
+      return near.reduce((b, d) => (a[d] !== a[b] ? (a[d] < a[b] ? d : b) : (tot(d) < tot(b) ? d : b)), near[0]);
+    }
+    if (strategy === 'max_lessons') {
+      const maxL = Math.max(...days.map(d => a[d]));
+      const near = days.filter(d => a[d] >= maxL - 1);
+      return near.reduce((b, d) => (a[d] !== a[b] ? (a[d] > a[b] ? d : b) : (tot(d) < tot(b) ? d : b)), near[0]);
+    }
+    return days.reduce((b, d) => {
+      const s = tot(d), sb = tot(b);
+      return s < sb || (s === sb && a[d] > a[b]) ? d : b;
+    }, days[0]);
+  }
+
   function buildMonthlyDuty(S, yearMonth, mode) {
     const ym = yearMonth || (S.duty && S.duty.month) || defaultYearMonth();
     const mMode = mode || (S.duty && S.duty.monthlyMode) || 'rotate';
     const [yr, mo] = ym.split('-').map(Number);
     const D = +S.school.D || 5, pl = dutyPlaces(S);
-    const adm = (S.duty && S.duty.admin) || {};
-    const eligible = S.teachers.filter(t => !isDutyExempt(S, t) && dutyOf(t).d >= 0);
+    S.duty = Object.assign({ places: pl, admin: {}, strategy: 'min_lessons', avoidZeroDay: true, reassignClosedDay: true, closedDates: [], month: ym, monthlyMode: mMode, monthly: {} }, S.duty || {});
+    if (!Array.isArray(S.duty.closedDates)) S.duty.closedDates = [];
+    const closedSet = new Set(S.duty.closedDates);
+    const strategy = S.duty.strategy || 'min_lessons';
+    const avoidZeroDay = S.duty.avoidZeroDay !== false;
+    const reassignClosed = S.duty.reassignClosedDay !== false;
+    const adm = S.duty.admin || {};
 
-    // Eğer henüz haftalık nöbet dağıtılmadıysa önce haftalık dağıtımı yap
-    if (!eligible.length && S.teachers.some(t => !isDutyExempt(S, t))) {
+    // Eğer henüz haftalık nöbet dağıtılmadıysa önce ders programına göre haftalık dağıtımı yap
+    const preAssigned = S.teachers.filter(t => !isDutyExempt(S, t) && dutyOf(t).d >= 0);
+    if (!preAssigned.length && S.teachers.some(t => !isDutyExempt(S, t))) {
       dutyAuto(S);
     }
-    const assigned = S.teachers.filter(t => !isDutyExempt(S, t) && dutyOf(t).d >= 0);
+
+    const loadsByT = teacherDailyLoads(S, EP.occ(S));
+    const eligible = S.teachers.filter(t => !isDutyExempt(S, t));
     const daysInMonth = new Date(yr, mo, 0).getDate();
+
+    // 1) Ayın tüm okul günlerini (Pzt..D) takvim haftalarına göre grupla
     const rows = [];
-    const weekSeen = {};
+    const weekOrder = [];
+    const weekMap = new Map();
 
     for (let day = 1; day <= daysInMonth; day++) {
       const dt = new Date(yr, mo - 1, day, 12, 0, 0);
-      const jsDow = dt.getDay(); // 0=Sun, 1=Mon...6=Sat
-      const d = jsDow === 0 ? 6 : jsDow - 1; // 0=Pzt..5=Cmt, 6=Paz
+      const jsDow = dt.getDay(); // 0=Paz, 1=Pzt..6=Cmt
+      const d = jsDow === 0 ? 6 : jsDow - 1;
       if (d >= D) continue;
-      const wIdx = weekSeen[d] || 0;
-      weekSeen[d] = wIdx + 1;
       const iso = `${yr}-${String(mo).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const wKey = weekMondayKey(yr, mo, day);
+      if (!weekMap.has(wKey)) {
+        weekOrder.push(wKey);
+        weekMap.set(wKey, []);
+      }
       const posts = {};
       for (const p of pl) posts[p] = [];
-      for (const t of assigned) {
-        const du = dutyOf(t);
-        if (du.d !== d) continue;
-        const baseIdx = Math.max(0, pl.indexOf(du.place || pl[0]));
-        const targetIdx = mMode === 'rotate' ? (baseIdx + wIdx) % pl.length : baseIdx;
-        posts[pl[targetIdx]].push(t.name);
-      }
-      rows.push({ date: iso, dayNum: day, dow: d, weekNum: wIdx + 1, posts, admin: adm[d] || '' });
+      const isClosed = closedSet.has(iso);
+      const row = {
+        date: iso,
+        dayNum: day,
+        dow: d,
+        weekKey: wKey,
+        weekNum: weekOrder.indexOf(wKey) + 1,
+        closed: isClosed,
+        posts,
+        admin: isClosed ? '' : (adm[d] || '')
+      };
+      rows.push(row);
+      weekMap.get(wKey).push(row);
     }
 
-    S.duty = S.duty || { places: pl, admin: {}, monthly: {} };
+    // 2) Her takvim haftası için KESİN KURAL: Bir öğretmen haftada EN FAZLA 1 GÜN nöbet tutar!
+    weekOrder.forEach((wKey, wIdx) => {
+      const wRows = weekMap.get(wKey) || [];
+      const openRows = wRows.filter(r => !r.closed);
+      if (!openRows.length) return;
+      const openByDow = new Map(openRows.map(r => [r.dow, r]));
+      const usedInWeek = new Set(); // Bu haftada nöbet verilen öğretmen ID'leri (en fazla 1 gün!)
+      const dayLoadCnt = {};
+      const postLoad = {};
+      for (const r of openRows) {
+        dayLoadCnt[r.dow] = 0;
+        postLoad[r.dow] = pl.map(() => 0);
+      }
+
+      // Aşama A: Haftalık nöbet günü bu haftada AÇIK olan öğretmenleri yerleştir
+      const deferred = [];
+      for (const t of eligible) {
+        if (usedInWeek.has(t.id)) continue;
+        const du = dutyOf(t);
+        if (du.d >= 0 && openByDow.has(du.d)) {
+          const targetRow = openByDow.get(du.d);
+          const baseIdx = Math.max(0, pl.indexOf(du.place || pl[0]));
+          const pi = mMode === 'rotate' ? (baseIdx + wIdx) % pl.length : baseIdx;
+          targetRow.posts[pl[pi]].push(t.name);
+          usedInWeek.add(t.id);
+          dayLoadCnt[du.d]++;
+          postLoad[du.d][pi]++;
+        } else {
+          deferred.push(t);
+        }
+      }
+
+      // Aşama B: Günü kapalı/tatile denk gelen (veya haftalık günü atanmamış) öğretmenleri,
+      // seçenek açıksa bu haftanın ders programına uygun BAŞKA bir açık gününe kaydır (yine haftada max 1 gün!)
+      if (reassignClosed && deferred.length) {
+        const openDows = openRows.map(r => r.dow);
+        for (const t of deferred) {
+          if (usedInWeek.has(t.id)) continue;
+          const bestD = pickDayForTeacher(S, t, openDows, loadsByT, dayLoadCnt, strategy, avoidZeroDay);
+          if (bestD < 0 || !openByDow.has(bestD)) continue;
+          const targetRow = openByDow.get(bestD);
+          const pArr = postLoad[bestD];
+          const minP = Math.min(...pArr);
+          const pi = pArr.indexOf(minP);
+          targetRow.posts[pl[pi]].push(t.name);
+          usedInWeek.add(t.id);
+          dayLoadCnt[bestD]++;
+          pArr[pi]++;
+        }
+      }
+    });
+
     S.duty.month = ym;
     S.duty.monthlyMode = mMode;
     S.duty.monthly = S.duty.monthly || {};
     S.duty.monthly[ym] = rows;
     return rows;
+  }
+
+  function toggleDutyClosedDate(S, iso) {
+    if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return false;
+    S.duty = Object.assign({ places: dutyPlaces(S), admin: {}, closedDates: [], monthly: {} }, S.duty || {});
+    if (!Array.isArray(S.duty.closedDates)) S.duty.closedDates = [];
+    const idx = S.duty.closedDates.indexOf(iso);
+    let closedNow = false;
+    if (idx >= 0) {
+      S.duty.closedDates.splice(idx, 1);
+      closedNow = false;
+    } else {
+      S.duty.closedDates.push(iso);
+      S.duty.closedDates.sort();
+      closedNow = true;
+    }
+    const ym = iso.slice(0, 7);
+    buildMonthlyDuty(S, ym, S.duty.monthlyMode || 'rotate');
+    return closedNow;
+  }
+
+  function clearMonthClosedDates(S, ym) {
+    if (!S.duty || !Array.isArray(S.duty.closedDates)) return 0;
+    const before = S.duty.closedDates.length;
+    S.duty.closedDates = S.duty.closedDates.filter(d => !String(d).startsWith(ym + '-'));
+    const removed = before - S.duty.closedDates.length;
+    buildMonthlyDuty(S, ym, S.duty.monthlyMode || 'rotate');
+    return removed;
+  }
+
+  function checkMonthlyWeekDup(rows, rowIdx, place, names) {
+    const row = rows && rows[rowIdx];
+    if (!row || !Array.isArray(names) || !names.length) return null;
+    const norm = s => String(s || '').trim().toLocaleLowerCase('tr');
+    const seenSelf = new Set();
+    for (const nm of names) {
+      const k = norm(nm);
+      if (!k) continue;
+      if (seenSelf.has(k)) return { name: nm, date: row.date, dow: row.dow, sameDay: true };
+      seenSelf.add(k);
+    }
+    const wKey = row.weekKey || String(row.weekNum);
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      if (!r || r.closed) continue;
+      if ((r.weekKey || String(r.weekNum)) !== wKey) continue;
+      for (const [p, arr] of Object.entries(r.posts || {})) {
+        if (i === rowIdx && p === place) continue;
+        for (const ex of (arr || [])) {
+          const ek = norm(ex);
+          if (ek && seenSelf.has(ek)) {
+            return { name: ex, date: r.date, dow: r.dow, sameDay: i === rowIdx };
+          }
+        }
+      }
+    }
+    return null;
   }
 
   function docMonthlyDuty(S, yearMonth, opts) {
@@ -344,9 +513,11 @@
     const ayLabel = `${AY_AD[(mo || 1) - 1] || ''} ${yr}`.toLocaleUpperCase('tr');
     const html = `<section class="doc portrait"><div class="ttl">${EP.esc(upTR(kurumAdi(S)))} MÜDÜRLÜĞÜ<br>${EP.esc(ayLabel)} AYI ÖĞRETMEN NÖBET ÇİZELGESİ</div>
       <table class="g" style="font-size:11px"><thead><tr><th style="width:82px"><b>Tarih</b></th><th style="width:74px"><b>Gün</b></th>${pl.map(p => `<th><b>${EP.esc(p)}</b></th>`).join('')}<th><b>Nöbetçi İdareci</b></th></tr></thead><tbody>
-      ${rows.map(row => `<tr><td style="height:26px">${fmtD(row.date)}</td><td class="day" style="height:26px;font-size:11px">${EP.GUN[row.dow]}</td>${pl.map(p => `<td style="height:26px;font-size:11px">${((row.posts || {})[p] || []).map(nm => EP.esc(upTR(nm))).join(', ')}</td>`).join('')}<td style="height:26px;font-size:11px">${EP.esc(row.admin || '')}</td></tr>`).join('')}
+      ${rows.map(row => row.closed
+        ? `<tr style="background:#f5f5f5;color:#777"><td style="height:24px">${fmtD(row.date)}</td><td class="day" style="height:24px;font-size:11px">${EP.GUN[row.dow]}</td><td colspan="${pl.length + 1}" style="height:24px;font-size:11px;font-style:italic">KAPALI / TATİL GÜNÜ (Nöbet yazılmaz)</td></tr>`
+        : `<tr><td style="height:26px">${fmtD(row.date)}</td><td class="day" style="height:26px;font-size:11px">${EP.GUN[row.dow]}</td>${pl.map(p => `<td style="height:26px;font-size:11px">${((row.posts || {})[p] || []).map(nm => EP.esc(upTR(nm))).join(', ')}</td>`).join('')}<td style="height:26px;font-size:11px">${EP.esc(row.admin || '')}</td></tr>`).join('')}
       </tbody></table>
-      <p class="note">Yukarıdaki aylık nöbet çizelgesi ${EP.esc(AY_AD[(mo || 1) - 1] || '')} ${yr} ayı boyunca uygulanacaktır. Okul müdürü, müdür yardımcıları ve nöbetten muaf öğretmenler öğretmen nöbet yerlerinde görevlendirilmemiştir.</p>
+      <p class="note">Yukarıdaki aylık nöbet çizelgesi ${EP.esc(AY_AD[(mo || 1) - 1] || '')} ${yr} ayı boyunca uygulanacaktır. Her öğretmen bir haftada en fazla 1 gün nöbet tutar; kapalı/tatil günlerine nöbet yazılmaz. Okul müdürü, müdür yardımcıları ve nöbetten muaf öğretmenler öğretmen nöbet yerlerinde görevlendirilmemiştir.</p>
       <div class="sig">${sigL(S)}${sigR(S)}</div></section>`;
     return decorateWatermark(html, wm);
   }
@@ -606,7 +777,7 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
   Object.assign(EP, {
     DOC_CSS, RTABS, DUTY_STRATEGIES, AY_AD, rep, donemText, myList, dutyOf, dutyPlaces,
     staffAdminKind, isDutyExempt, dutyExemptReason, clubOptions, clubAuto,
-    teacherDailyLoads, defaultYearMonth, buildMonthlyDuty, docMonthlyDuty,
+    teacherDailyLoads, defaultYearMonth, dutyClosedSet, toggleDutyClosedDate, clearMonthClosedDates, checkMonthlyWeekDup, buildMonthlyDuty, docMonthlyDuty,
     docClass, docTeacher, docSheet, docDuty, dutyAuto, docsFor, docFile,
     csvExport, excelExport, wordExport, pngCanvas, vQuality, vRapor
   });

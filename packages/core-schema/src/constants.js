@@ -61,19 +61,40 @@ export const ShiftType = Object.freeze({
   AFTERNOON: 'afternoon'
 });
 
-/** 11 MEB kurum türü */
+/** MEB TTKB kurum türleri (gruplandırılmış) */
 export const SchoolTypes = Object.freeze([
-  { id: 'ilkokul', name: 'İlkokul', grades: [1, 2, 3, 4], defaultPeriods: 6 },
-  { id: 'ortaokul', name: 'Ortaokul', grades: [5, 6, 7, 8], defaultPeriods: 7 },
-  { id: 'imam_hatip_ortaokulu', name: 'İmam Hatip Ortaokulu', grades: [5, 6, 7, 8], defaultPeriods: 8 },
-  { id: 'anadolu_lisesi', name: 'Anadolu Lisesi', grades: [9, 10, 11, 12], defaultPeriods: 8 },
-  { id: 'fen_lisesi', name: 'Fen Lisesi', grades: [9, 10, 11, 12], defaultPeriods: 8 },
-  { id: 'sosyal_bilimler_lisesi', name: 'Sosyal Bilimler Lisesi', grades: [9, 10, 11, 12], defaultPeriods: 8 },
-  { id: 'anadolu_imam_hatip_lisesi', name: 'Anadolu İmam Hatip Lisesi', grades: [9, 10, 11, 12], defaultPeriods: 8 },
-  { id: 'mesleki_teknik_anadolu_lisesi', name: 'Mesleki ve Teknik Anadolu Lisesi', grades: [9, 10, 11, 12], defaultPeriods: 9 },
-  { id: 'cok_programli_anadolu_lisesi', name: 'Çok Programlı Anadolu Lisesi', grades: [9, 10, 11, 12], defaultPeriods: 8 },
-  { id: 'ozel_ogretim', name: 'Özel Öğretim Kurumları', grades: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], defaultPeriods: 8 },
-  { id: 'ozel_egitim', name: 'Özel Eğitim Kurumları', grades: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], defaultPeriods: 6 }
+  // 1. Ortaokul Kurumları (5–8. Sınıf)
+  { id: 'ortaokul', group: 'oo', name: 'Ortaokul', grades: [5, 6, 7, 8], defaultPeriods: 7 },
+  { id: 'imam_hatip_ortaokulu', group: 'oo', name: 'İmam Hatip Ortaokulu', grades: [5, 6, 7, 8], defaultPeriods: 8 },
+  { id: 'spor_ortaokulu', group: 'oo', name: 'Spor Ortaokulu', grades: [5, 6, 7, 8], defaultPeriods: 8 },
+  { id: 'guzel_sanatlar_muzik_ortaokulu', group: 'oo', name: 'Güzel Sanatlar Müzik Ortaokulu', grades: [5, 6, 7, 8], defaultPeriods: 8 },
+  // 2. Genel Ortaöğretim — Anadolu, Fen ve Sosyal Bilimler Liseleri
+  { id: 'anadolu_lisesi', group: 'lise_genel', name: 'Anadolu Lisesi', grades: [9, 10, 11, 12], defaultPeriods: 8 },
+  { id: 'anadolu_lisesi_hazirlik', group: 'lise_genel', name: 'Hazırlık Sınıfı Bulunan Anadolu Lisesi', grades: [0, 9, 10, 11, 12], defaultPeriods: 8 },
+  { id: 'fen_lisesi', group: 'lise_genel', name: 'Fen Lisesi', grades: [9, 10, 11, 12], defaultPeriods: 8 },
+  { id: 'fen_lisesi_hazirlik', group: 'lise_genel', name: 'Hazırlık Sınıfı Bulunan Fen Lisesi', grades: [0, 9, 10, 11, 12], defaultPeriods: 8 },
+  { id: 'sosyal_bilimler_lisesi', group: 'lise_genel', name: 'Sosyal Bilimler Lisesi', grades: [9, 10, 11, 12], defaultPeriods: 8 },
+  { id: 'sosyal_bilimler_lisesi_hazirlik', group: 'lise_genel', name: 'Hazırlık Sınıfı Bulunan Sosyal Bilimler Lisesi', grades: [0, 9, 10, 11, 12], defaultPeriods: 8 },
+  // 3. Özel Program Uygulayan Proje Liseleri (45 Saat · Hazırlık + 9–12)
+  { id: 'ozel_program_anadolu_lisesi', group: 'lise_proje', name: 'Özel Program Uygulayan Hazırlık Sınıfı Bulunan Anadolu Lisesi', grades: [0, 9, 10, 11, 12], defaultPeriods: 9 },
+  { id: 'ozel_program_fen_lisesi', group: 'lise_proje', name: 'Özel Program Uygulayan Fen Lisesi', grades: [0, 9, 10, 11, 12], defaultPeriods: 9 },
+  { id: 'ozel_program_sosyal_bilimler_lisesi', group: 'lise_proje', name: 'Özel Program Uygulayan Sosyal Bilimler Lisesi', grades: [0, 9, 10, 11, 12], defaultPeriods: 9 },
+  // 4. İmam Hatip Liseleri
+  { id: 'anadolu_imam_hatip_lisesi', group: 'lise_ihl', name: 'Anadolu İmam Hatip Lisesi', grades: [9, 10, 11, 12], defaultPeriods: 8 },
+  { id: 'anadolu_imam_hatip_lisesi_hazirlik', group: 'lise_ihl', name: 'Hazırlık Sınıfı Bulunan Anadolu İmam Hatip Lisesi', grades: [0, 9, 10, 11, 12], defaultPeriods: 8 },
+  { id: 'anadolu_imam_hatip_lisesi_fsb', group: 'lise_ihl', name: 'Anadolu İmam Hatip Lisesi — Fen ve Sosyal Bilimler Programı', grades: [9, 10, 11, 12], defaultPeriods: 8 },
+  // 5. Güzel Sanatlar ve Spor Liseleri
+  { id: 'gsl_gorsel_sanatlar', group: 'lise_gsl_spor', name: 'Güzel Sanatlar Lisesi — Görsel Sanatlar', grades: [9, 10, 11, 12], defaultPeriods: 9 },
+  { id: 'gsl_tiyatro', group: 'lise_gsl_spor', name: 'Güzel Sanatlar Lisesi — Tiyatro', grades: [9, 10, 11, 12], defaultPeriods: 9 },
+  { id: 'gsl_muzik', group: 'lise_gsl_spor', name: 'Güzel Sanatlar Lisesi — Müzik', grades: [9, 10, 11, 12], defaultPeriods: 9 },
+  { id: 'gsl_turk_muzigi', group: 'lise_gsl_spor', name: 'Güzel Sanatlar Lisesi — Türk Müziği', grades: [9, 10, 11, 12], defaultPeriods: 9 },
+  { id: 'spor_lisesi', group: 'lise_gsl_spor', name: 'Spor Lisesi', grades: [9, 10, 11, 12], defaultPeriods: 8 },
+  { id: 'spor_lisesi_tematik', group: 'lise_gsl_spor', name: 'Tematik Program Uygulayan Spor Lisesi', grades: [9, 10, 11, 12], defaultPeriods: 8 },
+  // 6. Mesleki, Çok Programlı ve Özel Kurumlar (Düzenlenebilir Taslaklar)
+  { id: 'mesleki_teknik_anadolu_lisesi', group: 'mesleki_ozel', name: 'Mesleki ve Teknik Anadolu Lisesi', grades: [9, 10, 11, 12], defaultPeriods: 8 },
+  { id: 'cok_programli_anadolu_lisesi', group: 'mesleki_ozel', name: 'Çok Programlı Anadolu Lisesi', grades: [9, 10, 11, 12], defaultPeriods: 8 },
+  { id: 'ozel_ogretim', group: 'mesleki_ozel', name: 'Özel Öğretim Kurumları', grades: [5, 6, 7, 8, 9, 10, 11, 12], defaultPeriods: 8 },
+  { id: 'ozel_egitim', group: 'mesleki_ozel', name: 'Özel Eğitim Kurumları', grades: [5, 6, 7, 8, 9, 10, 11, 12], defaultPeriods: 6 }
 ]);
 
 /** Ders saatine göre hazır blok kombinasyonları */

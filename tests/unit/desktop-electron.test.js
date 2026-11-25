@@ -68,6 +68,9 @@ test('Electron gömülü motor yolları ve electron-builder ASAR-dışı güvenl
   assert.equal(builderCfg.executableName, 'DersMatrixUltimate');
   assert.equal(builderCfg.win.icon, 'build/icon.ico');
   assert.ok(builderCfg.nsis.artifactName.includes('Setup'));
+  assert.equal(builderCfg.nsis.include, 'build/installer.nsh');
+  const nshSrc = fs.readFileSync(path.resolve('apps/desktop-electron/build/installer.nsh'), 'utf8');
+  assert.ok(nshSrc.includes('!macro customCheckAppRunning') && nshSrc.includes('taskkill.exe'));
   assert.equal(builderCfg.portable, undefined, 'Portable target must be disabled');
   assert.equal(builderCfg.win.target.some(t => t.target === 'portable'), false);
 

@@ -125,12 +125,42 @@ test('MEB social clubs, admin duty exemption, simplified menus & zero GitHub lin
   assert.deepEqual([...EP.TYPES.ilk.grades], [5, 6, 7, 8]);
   assert.ok(Array.isArray(EP.VIVID_PALETTE) && EP.VIVID_PALETTE.length >= 30, 'Vivid color palette must have >= 30 distinct colors');
 
-  // 4c. Monthly duty generation & schedule-aware strategies
+  // 4c. Monthly duty calendar, open/close dates & strict max-1-day/week rule
   const mRows = EP.buildMonthlyDuty(st, '2026-11', 'rotate');
   assert.ok(mRows.length >= 20, 'November 2026 must generate >= 20 school duty days');
+  // Close a specific date (e.g. 2026-11-10) and verify it gets zero duties while weekly max-1-day rule holds
+  const closedNow = EP.toggleDutyClosedDate(st, '2026-11-10');
+  assert.equal(closedNow, true, '2026-11-10 must be marked closed');
+  const rowsAfterClose = st.duty.monthly['2026-11'];
+  const closedRow = rowsAfterClose.find(r => r.date === '2026-11-10');
+  assert.ok(closedRow && closedRow.closed === true, 'Closed date must have closed=true');
+  assert.equal(Object.values(closedRow.posts).flat().length, 0, 'Closed date must have zero assigned teachers');
+  // Verify NO teacher has duty more than 1 day in ANY calendar week of the month
+  const byWeek = new Map();
+  for (const r of rowsAfterClose) {
+    if (r.closed) continue;
+    if (!byWeek.has(r.weekKey)) byWeek.set(r.weekKey, new Set());
+    const seen = byWeek.get(r.weekKey);
+    for (const arr of Object.values(r.posts || {})) {
+      for (const nm of arr) {
+        assert.ok(!seen.has(nm), `Teacher "${nm}" assigned more than 1 day in calendar week ${r.weekKey}`);
+        seen.add(nm);
+      }
+    }
+  }
+  // Verify manual same-week duplicate detector catches violations
+  const openInSameWeek = rowsAfterClose.filter(r => !r.closed && r.weekKey === closedRow.weekKey);
+  if (openInSameWeek.length >= 2) {
+    const firstAssigned = Object.values(openInSameWeek[0].posts).flat()[0];
+    if (firstAssigned) {
+      const idx2 = rowsAfterClose.indexOf(openInSameWeek[1]);
+      const dup = EP.checkMonthlyWeekDup(rowsAfterClose, idx2, EP.dutyPlaces(st)[0], [firstAssigned]);
+      assert.ok(dup && dup.name === firstAssigned, 'checkMonthlyWeekDup must detect same-week duplicate');
+    }
+  }
   const mDocClean = EP.docMonthlyDuty(st, '2026-11', { watermark: false });
   const mDocWm = EP.docMonthlyDuty(st, '2026-11', { watermark: true });
-  assert.ok(mDocClean.includes('KASIM 2026 AYI ÖĞRETMEN NÖBET ÇİZELGESİ') && !mDocClean.includes('wm-giant'));
+  assert.ok(mDocClean.includes('KASIM 2026 AYI ÖĞRETMEN NÖBET ÇİZELGESİ') && mDocClean.includes('KAPALI / TATİL') && !mDocClean.includes('wm-giant'));
   assert.ok(mDocWm.includes('wm-giant') && mDocWm.includes('EVRAK PLUS'));
 
   // 4b. Duplicate course assignment to the same class must be blocked
@@ -156,4 +186,89 @@ test('MEB social clubs, admin duty exemption, simplified menus & zero GitHub lin
   const cleanCsv = EP.csvExport(st, { watermark: false });
   assert.ok(wmCsv.includes('EVRAK PLUS'));
   assert.ok(!cleanCsv.includes('EVRAK PLUS'));
+});
+
+test('TTKB 2025/2026 school type groups, mandatory/elective math audit & Hazırlık (grade 0) roundtrip', () => {
+  const EP = loadUiNamespace();
+
+  // 1. TYPE_GROUPS covers 100% of EP.TYPES with zero orphans or duplicates
+  assert.equal(EP.TYPE_GROUPS.length, 6, 'Expected 6 MEB school type groups');
+  const groupedKeys = EP.TYPE_GROUPS.flatMap(g => g.types);
+  const typeKeys = Object.keys(EP.TYPES);
+  assert.equal(groupedKeys.length, new Set(groupedKeys).size, 'Duplicate type key in TYPE_GROUPS');
+  assert.deepEqual([...groupedKeys].sort(), [...typeKeys].sort(), 'TYPE_GROUPS must match EP.TYPES 1-to-1');
+  assert.equal(typeKeys.length, 26, 'Expected 26 school types (22 official TTKB + 4 editable drafts)');
+
+  // 2. Elementary 1-4 grades must NOT be in ilk, muzik_oo, ozel_ogretim, ozel_egitim
+  for (const k of ['ilk', 'iho', 'spor_oo', 'muzik_oo']) {
+    assert.deepEqual([...EP.TYPES[k].grades], [5, 6, 7, 8], `${k} must cover grades 5-8 only`);
+  }
+  assert.deepEqual([...EP.TYPES.ozel_ogretim.grades], [5, 6, 7, 8, 9, 10, 11, 12]);
+  assert.deepEqual([...EP.TYPES.ozel_egitim.grades], [5, 6, 7, 8, 9, 10, 11, 12]);
+
+  // 3. Mathematical integrity check across EVERY school type & grade column
+  for (const [key, t] of Object.entries(EP.TYPES)) {
+    assert.equal(t.grades.length, t.total.length, `${key}: grades/total length mismatch`);
+    assert.equal(t.grades.length, t.sec.length, `${key}: grades/sec length mismatch`);
+    assert.ok(!t.poolNote, `${key}: should not carry outdated poolNote warning`);
+
+    for (const row of t.z) {
+      assert.equal(row[1].length, t.grades.length, `${key} mandatory "${row[0]}" length mismatch`);
+    }
+    for (let i = 0; i < t.grades.length; i++) {
+      const zSum = t.z.reduce((acc, r) => acc + Number(r[1][i] || 0), 0);
+      assert.equal(
+        zSum + t.sec[i],
+        t.total[i],
+        `${key} grade ${t.grades[i]}: mandatory(${zSum}) + elective(${t.sec[i]}) !== total(${t.total[i]})`
+      );
+    }
+
+    const seenPoolNames = new Set();
+    for (const row of t.pool) {
+      assert.ok(EP.GRP[row[1]], `${key} elective "${row[0]}" references unknown GRP "${row[1]}"`);
+      assert.ok(t.groups.includes(row[1]), `${key} elective "${row[0]}" group "${row[1]}" missing from t.groups`);
+      assert.equal(
+        row[3].split('|').length,
+        t.poolGrades.length,
+        `${key} elective "${row[0]}" pipe columns (${row[3].split('|').length}) !== poolGrades (${t.poolGrades.length})`
+      );
+      assert.ok(!seenPoolNames.has(row[0]), `${key} duplicate elective name "${row[0]}"`);
+      seenPoolNames.add(row[0]);
+    }
+  }
+
+  // 4. Verify specific TTKB fixes (SBL Osmanlı Türkçesi 11th grade = 2, GSL = 43 hrs, Proje = 45 hrs)
+  const sblOsm = EP.TYPES.sbl.z.find(r => r[0] === 'Osmanlı Türkçesi');
+  assert.deepEqual([...sblOsm[1]], [2, 2, 2, 0]);
+  assert.deepEqual([...EP.TYPES.gsl_gorsel.total], [43, 43, 43, 43]);
+  assert.deepEqual([...EP.TYPES.ozel_al.total], [45, 45, 45, 45, 45]);
+  assert.deepEqual([...EP.TYPES.ozel_fen.total], [45, 45, 45, 45, 45]);
+  assert.deepEqual([...EP.TYPES.ozel_sbl.total], [45, 45, 45, 45, 45]);
+  assert.deepEqual([...EP.TYPES.spor_lise.total], [40, 40, 40, 40]);
+
+  // 5. Hazırlık (grade: 0) end-to-end roundtrip: applyTemplate -> v3 -> schema validate -> v3ToState
+  const st = EP.blank();
+  st.school.type = 'ozel_fen';
+  st.school.P = 9;
+  const hzCls = { id: 'c_hz', name: 'Hz/A', grade: 0, shift: 'full', studentCount: 28, homeRoomId: '', closed: [] };
+  st.classes.push(hzCls);
+  const created = EP.applyTemplate(st, hzCls, false);
+  assert.ok(created.length >= 5, 'Hazırlık template must create mandatory courses');
+  const hzHours = created.reduce((a, c) => a + c.hours, 0);
+  assert.equal(hzHours, 31, 'Özel Program Fen Lisesi Hazırlık mandatory hours (incl. Rehberlik) must equal 31');
+  for (const c of created) {
+    assert.ok(!c.subj.endsWith('_SO'), `Hazırlık subject ${c.subj} must never be tagged as Sınıf Öğretmenliği`);
+    assert.notEqual(st.subjects[c.subj][2], 'Sınıf Öğretmenliği');
+  }
+  const v3 = EP.stateToV3Project(st);
+  assert.equal(v3.school.schoolType, 'ozel_program_fen_lisesi');
+  assert.equal(v3.classes[0].grade, 0, 'v3 export must preserve grade 0 for Hazırlık');
+  const check = validateProjectSchema(v3);
+  assert.equal(check.valid, true, `Hazırlık v3 schema errors: ${check.errors.join('; ')}`);
+  const restored = EP.v3ToState(Object.assign({}, v3, { meta: {} }));
+  assert.equal(restored.school.type, 'ozel_fen');
+  assert.equal(restored.classes[0].grade, 0, 'v3ToState must preserve grade 0 for Hazırlık');
+  assert.equal(EP.gradeLabel(0), 'Hazırlık');
+  assert.equal(EP.gradeRange([0, 9, 10, 11, 12]), 'Hazırlık–12. sınıf');
 });

@@ -64,7 +64,7 @@
     return {
       v: 3,
       schemaVersion: 3,
-      appVersion: '2.2.2',
+      appVersion: '2.3.0',
       id: uid(),
       revision: 1,
       updatedAt: new Date().toISOString(),
@@ -83,7 +83,7 @@
       blk: {},
       blkMode: 'fixed',
       report: { paper: 'A4' },
-      duty: { places: ['Bahçe', 'Koridor'], admin: {}, strategy: 'min_lessons', avoidZeroDay: true, month: '', monthlyMode: 'rotate', monthly: {} },
+      duty: { places: ['Bahçe', 'Koridor'], admin: {}, strategy: 'min_lessons', avoidZeroDay: true, reassignClosedDay: true, closedDates: [], month: '', monthlyMode: 'rotate', monthly: {} },
       rules: [
         { id: uid(), type: 'diff', on: true, level: 'HARD', weight: 1000000 },
         { id: uid(), type: 'lunch', on: true, level: 'HIGH', weight: 100 }
@@ -150,15 +150,30 @@
   }
 
   const SCHOOL_TYPE_FROM_V3 = {
-    ilkokul: 'ilk', ortaokul: 'ilk', imam_hatip_ortaokulu: 'iho', anadolu_lisesi: 'al',
-    fen_lisesi: 'fen', sosyal_bilimler_lisesi: 'sbl', anadolu_imam_hatip_lisesi: 'aihl',
+    ilkokul: 'ilk', ortaokul: 'ilk', imam_hatip_ortaokulu: 'iho',
+    spor_ortaokulu: 'spor_oo', guzel_sanatlar_muzik_ortaokulu: 'muzik_oo',
+    anadolu_lisesi: 'al', anadolu_lisesi_hazirlik: 'al_hz',
+    fen_lisesi: 'fen', fen_lisesi_hazirlik: 'fen_hz',
+    sosyal_bilimler_lisesi: 'sbl', sosyal_bilimler_lisesi_hazirlik: 'sbl_hz',
+    ozel_program_anadolu_lisesi: 'ozel_al', ozel_program_fen_lisesi: 'ozel_fen', ozel_program_sosyal_bilimler_lisesi: 'ozel_sbl',
+    anadolu_imam_hatip_lisesi: 'aihl', anadolu_imam_hatip_lisesi_hazirlik: 'aihl_hz', anadolu_imam_hatip_lisesi_fsb: 'aihl_fsb',
+    gsl_gorsel_sanatlar: 'gsl_gorsel', gsl_tiyatro: 'gsl_tiyatro', gsl_muzik: 'gsl_muzik', gsl_turk_muzigi: 'gsl_tmuzik',
+    spor_lisesi: 'spor_lise', spor_lisesi_tematik: 'spor_lise_tematik',
     mesleki_teknik_anadolu_lisesi: 'mtal', cok_programli_anadolu_lisesi: 'cpal',
     ozel_ogretim: 'ozel_ogretim', ozel_egitim: 'ozel_egitim'
   };
   const SCHOOL_TYPE_TO_V3 = {
-    ilk: 'ortaokul', iho: 'imam_hatip_ortaokulu', al: 'anadolu_lisesi', fen: 'fen_lisesi',
-    sbl: 'sosyal_bilimler_lisesi', aihl: 'anadolu_imam_hatip_lisesi', mtal: 'mesleki_teknik_anadolu_lisesi',
-    cpal: 'cok_programli_anadolu_lisesi', ozel_ogretim: 'ozel_ogretim', ozel_egitim: 'ozel_egitim', '': 'ortaokul'
+    ilk: 'ortaokul', iho: 'imam_hatip_ortaokulu',
+    spor_oo: 'spor_ortaokulu', muzik_oo: 'guzel_sanatlar_muzik_ortaokulu',
+    al: 'anadolu_lisesi', al_hz: 'anadolu_lisesi_hazirlik',
+    fen: 'fen_lisesi', fen_hz: 'fen_lisesi_hazirlik',
+    sbl: 'sosyal_bilimler_lisesi', sbl_hz: 'sosyal_bilimler_lisesi_hazirlik',
+    ozel_al: 'ozel_program_anadolu_lisesi', ozel_fen: 'ozel_program_fen_lisesi', ozel_sbl: 'ozel_program_sosyal_bilimler_lisesi',
+    aihl: 'anadolu_imam_hatip_lisesi', aihl_hz: 'anadolu_imam_hatip_lisesi_hazirlik', aihl_fsb: 'anadolu_imam_hatip_lisesi_fsb',
+    gsl_gorsel: 'gsl_gorsel_sanatlar', gsl_tiyatro: 'gsl_tiyatro', gsl_muzik: 'gsl_muzik', gsl_tmuzik: 'gsl_turk_muzigi',
+    spor_lise: 'spor_lisesi', spor_lise_tematik: 'spor_lisesi_tematik',
+    mtal: 'mesleki_teknik_anadolu_lisesi', cpal: 'cok_programli_anadolu_lisesi',
+    ozel_ogretim: 'ozel_ogretim', ozel_egitim: 'ozel_egitim', '': 'ortaokul'
   };
 
   function v3ToState(v3) {
@@ -196,7 +211,7 @@
     if (Array.isArray(v3.buildings) && v3.buildings.length) base.buildings = v3.buildings;
     if (Array.isArray(v3.rooms) && v3.rooms.length) base.rooms = v3.rooms;
     base.classes = (v3.classes || []).filter(c => !c.deletedAt).map(c => ({
-      id: c.id || uid(), name: c.name || 'Şube', grade: Number(c.grade || 5),
+      id: c.id || uid(), name: c.name || 'Şube', grade: c.grade != null && c.grade !== '' ? Number(c.grade) : 5,
       shift: c.shift || 'full', studentCount: Number(c.studentCount || 30),
       homeRoomId: c.homeRoomId || '', rehber: c.homeroomTeacherId || c.rehber || '',
       closed: Array.isArray(c.closed) ? c.closed : []
@@ -294,8 +309,8 @@
       if (bk && bk.mode === 'auto') bk.pats = ensure2(bk.pats, +k.split('|')[1]);
     }
     if (!o.report) o.report = { paper: 'A4' };
-    if (!o.duty) o.duty = { places: ['Bahçe', 'Koridor'], admin: {}, strategy: 'min_lessons', avoidZeroDay: true, month: '', monthlyMode: 'rotate', monthly: {} };
-    else o.duty = Object.assign({ places: ['Bahçe', 'Koridor'], admin: {}, strategy: 'min_lessons', avoidZeroDay: true, month: '', monthlyMode: 'rotate', monthly: {} }, o.duty);
+    if (!o.duty) o.duty = { places: ['Bahçe', 'Koridor'], admin: {}, strategy: 'min_lessons', avoidZeroDay: true, reassignClosedDay: true, closedDates: [], month: '', monthlyMode: 'rotate', monthly: {} };
+    else o.duty = Object.assign({ places: ['Bahçe', 'Koridor'], admin: {}, strategy: 'min_lessons', avoidZeroDay: true, reassignClosedDay: true, closedDates: [], month: '', monthlyMode: 'rotate', monthly: {} }, o.duty);
     if (!Array.isArray(o.rules)) o.rules = b.rules;
     if (!o.rules.some(r => r.type === 'diff')) o.rules.unshift({ id: uid(), type: 'diff', on: true, level: 'HARD', weight: 1000000 });
     o.ui = Object.assign(b.ui, o.ui || {});
@@ -386,7 +401,7 @@
         av: t.av || {}, extra: t.extra || []
       })),
       classes: (S.classes || []).map(c => ({
-        id: c.id, name: c.name, grade: Number(c.grade || 5), shift: c.shift || 'full',
+        id: c.id, name: c.name, grade: c.grade != null && c.grade !== '' ? Number(c.grade) : 5, shift: c.shift || 'full',
         studentCount: Number(c.studentCount || 30), homeRoomId: c.homeRoomId || null,
         homeroomTeacherId: c.rehber || null, dmin: 0, dmax: P, closed: c.closed || []
       })),
@@ -465,7 +480,7 @@
 
   function findSubj(S, name, so) { return Object.keys(S.subjects).find(k => S.subjects[k][0] === name && k.endsWith('_SO') === so); }
   function ensureSubj(S, name, grade) {
-    const so = grade <= 4 && EP.SO_SET.has(name);
+    const g = Number(grade), so = g >= 1 && g <= 4 && EP.SO_SET.has(name);
     const ex = findSubj(S, name, so); if (ex) return ex;
     const key = EP.trSlug(name) + (so ? '_SO' : '');
     if (!S.subjects[key]) {

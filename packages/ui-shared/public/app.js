@@ -41,8 +41,11 @@
   let authUser = null; // null = ücretsiz yerel kullanım (üyelik çıkışı kilitli)
   let bulkMode = false;
   const bulkSel = new Set();
+  let bulkDrag = null;
+  let suppressNextCellClickAt = 0;
   let nativeStopMode = null; // null | 'stop' | 'maxFinish'
   let lastCellClick = null;
+  let cellClickTimer = null;
   let lastDblToggleAt = 0;
 
   /* ---------- Canlı ve Birbirinden Belirgin Ders Renkleri ---------- */
@@ -181,7 +184,7 @@
     $('#mX').addEventListener('click', () => { M.innerHTML = ''; });
   }
 
-  const APP_VER = (bridge && bridge.appVersion) || '2.2.2';
+  const APP_VER = (bridge && bridge.appVersion) || '2.3.0';
   let updateInfo = null;
   let updateProgress = null;
   const isMember = () => Boolean(authUser && (authUser.loggedIn || authUser.entitlementValid));
@@ -531,7 +534,7 @@
       `<div class="grid2"><div class="card"><h2>Kurum ve okul türü</h2><div class="fields" style="margin-top:12px">
         <label class="f">Okul adı<input data-k="school.name" value="${esc(s.name)}"></label>
         <label class="f">Eğitim yılı<input data-k="school.year" value="${esc(s.year)}"></label>
-        <label class="f" style="grid-column:1/-1">Okul türü<select data-k="school.type">${Object.entries(EP.TYPES).map(([k, t]) => `<option value="${k}" ${s.type === k ? 'selected' : ''}>${t.ad} (${t.grades[0]}–${t.grades.at(-1)}. sınıf)</option>`).join('')}<option value="" ${!T ? 'selected' : ''}>Diğer / şablonsuz</option></select></label>
+        <label class="f" style="grid-column:1/-1">Okul türü<select data-k="school.type">${(EP.TYPE_GROUPS || []).map(grp => `<optgroup label="${esc(grp.label)}">${grp.types.filter(k => EP.TYPES[k]).map(k => { const t = EP.TYPES[k]; return `<option value="${k}" ${s.type === k ? 'selected' : ''}>${esc(t.ad)} (${EP.gradeRange(t.grades)} · ${[...new Set(t.total)].join('/')} sa)</option>`; }).join('')}</optgroup>`).join('')}<optgroup label="Özel / Şablonsuz"><option value="" ${!T ? 'selected' : ''}>Diğer / şablonsuz</option></optgroup></select></label>
         <label class="f">Eğitim düzeni<select data-k="school.educationMode"><option value="full_day" ${s.educationMode !== 'dual_shift' ? 'selected' : ''}>Tam gün</option><option value="dual_shift" ${s.educationMode === 'dual_shift' ? 'selected' : ''}>İkili öğretim (Sabahçı / Öğlenci)</option></select></label>
         <label class="f">Gün sayısı<select data-k="school.D">${[5, 6].map(v => `<option ${+s.D === v ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
         <label class="f">Günlük ders sayısı<input type="number" min="1" max="12" data-k="school.P" value="${s.P}"></label>
@@ -550,17 +553,17 @@
   /* 3. Öğretmenler */
   function catalogEntries() {
     const T = EP.typeOf(S), out = [], seen = new Set();
-    const rng = a => a.length ? (a.length > 1 ? a[0] + '–' + a.at(-1) : a[0]) + '. sınıf' : '';
+    const rng = a => a.length ? EP.gradeRange(a) : '';
     const push = (grp, name, grades) => {
       if (!grades.length) return;
-      const g = grades[0], so = g <= 4 && EP.SO_SET.has(name), key = EP.findSubj(S, name, so) || EP.trSlug(name) + (so ? '_SO' : '');
+      const g = grades[0], so = g >= 1 && g <= 4 && EP.SO_SET.has(name), key = EP.findSubj(S, name, so) || EP.trSlug(name) + (so ? '_SO' : '');
       if (seen.has(key)) return; seen.add(key);
       out.push({ grp, key, name, grade: g, label: name + ' (' + rng(grades) + (so ? ', sınıf öğretmeni' : '') + ')', branch: S.subjects[key] ? S.subjects[key][2] : EP.branchOf(name, g, S.school.type) });
     };
     if (T) {
       for (const r of T.z) {
         const gs = T.grades.filter((g, i) => r[1][i] > 0);
-        if (EP.SO_SET.has(r[0]) && gs.some(g => g <= 4) && gs.some(g => g > 4)) { push('Zorunlu dersler', r[0], gs.filter(g => g <= 4)); push('Zorunlu dersler', r[0], gs.filter(g => g > 4)); }
+        if (EP.SO_SET.has(r[0]) && gs.some(g => g >= 1 && g <= 4) && gs.some(g => g > 4)) { push('Zorunlu dersler', r[0], gs.filter(g => g >= 1 && g <= 4)); push('Zorunlu dersler', r[0], gs.filter(g => g > 4)); }
         else push('Zorunlu dersler', r[0], gs);
       }
       for (const r of T.pool) {
@@ -811,13 +814,13 @@
     return H('Sınıflar ve şubeler', `Şubeleri ekleyin. Toplu eklemede ${T ? esc(T.ad) + ' çizelgesindeki' : 'şablondaki'} zorunlu dersler kendiliğinden eklenir ve öğretmenler otomatik atanır.`,
       `<button class="btn pri" data-act="bulkCls">Toplu sınıf ekle</button><button class="btn" data-act="addCls">Tek şube ekle</button><button class="btn" data-act="rehAuto">Rehber öğretmenleri dağıt</button>`) +
       `<div class="card" style="display:${S.ui.bulk ? 'block' : 'none'};margin-bottom:16px"><h2>Toplu sınıf ekle</h2><div class="fields" style="margin-top:12px">
-        ${G.map(g => `<label class="f">${g}. sınıf şube sayısı<input type="number" min="0" max="20" value="${S.classes.some(c => c.grade === g) ? 0 : 1}" id="bg${g}"></label>`).join('')}
+        ${G.map(g => `<label class="f">${EP.gradeLabel(g)} şube sayısı<input type="number" min="0" max="20" value="${S.classes.some(c => c.grade === g) ? 0 : 1}" id="bg${g}"></label>`).join('')}
       </div><div class="row" style="margin-top:12px"><button class="btn pri" data-act="bulkGo">Ekle ve zorunlu dersleri oluştur</button><button class="btn ghost" data-act="bulkCls">Vazgeç</button></div></div>` +
       (S.classes.length ? `<div class="card scroll"><table class="tbl"><thead><tr><th>Şube</th><th class="n">Düzey</th><th>Devre</th><th>Ana Derslik</th><th class="n">Ders/Çizelge</th><th class="n">Açık</th><th>Rehber öğretmen</th><th>Durum</th><th></th></tr></thead><tbody>${S.classes.map(c => {
         const st = EP.clsStat(S, c), o = EP.classOpen(S, c).tot, rh = EP.rehberOf(S, c);
         return `<tr>
           <td><input data-cls="${c.id}" data-f="name" value="${esc(c.name)}" style="width:92px"></td>
-          <td class="n"><input type="number" min="1" max="12" data-cls="${c.id}" data-f="grade" value="${c.grade}" style="width:62px"></td>
+          <td class="n"><input type="number" min="0" max="12" data-cls="${c.id}" data-f="grade" value="${c.grade}" title="0 = Hazırlık Sınıfı" style="width:62px">${+c.grade === 0 ? '<div class="small muted">Hazırlık</div>' : ''}</td>
           <td><select data-cls="${c.id}" data-f="shift"><option value="full" ${c.shift === 'full' ? 'selected' : ''}>Tam gün</option><option value="morning" ${c.shift === 'morning' ? 'selected' : ''}>Sabahçı</option><option value="afternoon" ${c.shift === 'afternoon' ? 'selected' : ''}>Öğlenci</option></select></td>
           <td><select data-cls="${c.id}" data-f="homeRoomId" style="max-width:140px"><option value="">—</option>${(S.rooms || []).map(r => `<option value="${r.id}" ${c.homeRoomId === r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select></td>
           <td class="n">${st.tot}${st.tg ? '/' + st.tg : ''}</td>
@@ -832,7 +835,15 @@
   /* 5. Dersler ve Bloklar (4 Sekmeli Tam Havuz) */
   function customHours(x) { return [...new Set(Object.values(x.hrs || {}).flatMap(EP.hrsList))].sort((a, b) => a - b); }
   function gradesWith(x, h) { return Object.keys(x.hrs || {}).map(Number).filter(g => EP.hrsList(x.hrs[g]).includes(h)).sort((a, b) => a - b); }
-  const rngG = a => a.length ? (a.length > 1 && a.every((g, i) => !i || g === a[i - 1] + 1) ? a[0] + '–' + a.at(-1) : a.join(', ')) + '. sınıf' : '—';
+  const rngG = a => {
+    if (!a || !a.length) return '—';
+    const hasHz = a.includes(0);
+    const nums = a.filter(g => g !== 0);
+    const parts = [];
+    if (hasHz) parts.push('Hazırlık');
+    if (nums.length) parts.push((nums.length > 1 && nums.every((g, i) => !i || g === nums[i - 1] + 1) ? nums[0] + '–' + nums.at(-1) : nums.join(', ')) + '. sınıf');
+    return parts.join(', ');
+  };
   function catalogNames() { const T = EP.typeOf(S); return new Set(T ? [...T.z.map(r => r[0]), ...T.pool.map(r => r[0])] : []); }
   function cdDraft(kind) { const d = S.ui.cd; if (d && d.kind === kind) return d; return (S.ui.cd = { kind, name: '', short: '', branch: '', times: 1, hrs: {}, blk: {}, edit: null }); }
   function bGet(sc, id, h) { if (sc === 'g') return (S.blk || {})[id + '|' + h] || null; return ((S.ui.cd || {}).blk || {})[h] || null; }
@@ -859,7 +870,7 @@
         ${sec ? `<label class="f">Kaç kez alınabilir<input type="number" min="1" max="4" data-cd="times" value="${d.times || 1}"></label>` : ''}
       </div>
       <h3 style="margin:12px 0 6px">Haftalık ders saati</h3>
-      <div class="row" style="gap:8px;flex-wrap:wrap">${T.grades.map(g => `<label class="f" style="width:82px">${g}. sınıf<input data-cd="h" data-g="${g}" value="${esc(d.hrs[g] || '')}" placeholder="–"></label>`).join('')}</div>
+      <div class="row" style="gap:8px;flex-wrap:wrap">${T.grades.map(g => `<label class="f" style="width:88px">${EP.gradeLabel(g)}<input data-cd="h" data-g="${g}" value="${esc(d.hrs[g] || '')}" placeholder="–"></label>`).join('')}</div>
       <h3 style="margin:14px 0 6px">Ders blokları</h3>
       ${hs.length ? `<div class="diag" style="gap:8px">${hs.map(h => `<div class="row" style="gap:10px;align-items:center"><b style="width:70px">${h} saat</b><span class="small muted" style="width:110px">${esc(rngG(gradesWith(d, h)))}</span>${blkCtl('d', '', h, bGet('d', '', h), bEff('d', '', h))}</div>`).join('')}</div>` : '<p class="small muted">Önce en az bir sınıf için saat yazın.</p>'}
       <datalist id="brlist">${BRANS.concat([EP.REHB]).map(b => `<option value="${esc(b)}">`).join('')}</datalist>
@@ -869,7 +880,7 @@
   function customList(kind) {
     const T = EP.typeOf(S), xs = (S.custom || []).filter(x => x.kind === kind); if (!xs.length) return '';
     return `<div class="card scroll" style="margin-top:12px"><h2>Okulun eklediği ${kind === 'secmeli' ? 'seçmeli' : 'zorunlu'} dersler</h2>
-      <table class="tbl" style="margin-top:8px"><thead><tr><th>Ders</th><th>Branş</th>${T.grades.map(g => `<th class="n">${g}.</th>`).join('')}<th>Bloklar</th><th class="n">Kart</th><th></th></tr></thead><tbody>${xs.map(x => {
+      <table class="tbl" style="margin-top:8px"><thead><tr><th>Ders</th><th>Branş</th>${T.grades.map(g => `<th class="n">${EP.gradeShort(g)}</th>`).join('')}<th>Bloklar</th><th class="n">Kart</th><th></th></tr></thead><tbody>${xs.map(x => {
         const k = EP.findSubj(S, x.name, false), n = k ? S.cards.filter(c => c.subj === k).length : 0;
         return `<tr><td>${k ? `<span class="tag ${colorOf(k)}">${esc(SS(k))}</span> ` : ''}${esc(x.name)}${kind === 'secmeli' ? ` <span class="muted">(${x.times || 1})</span>` : ''}</td>
           <td class="small muted">${esc(k ? SB(k) : x.branch)}</td>${T.grades.map(g => `<td class="n" style="color:${x.hrs[g] ? 'inherit' : 'var(--line)'}">${esc(x.hrs[g] || '–')}</td>`).join('')}
@@ -890,7 +901,7 @@
     const cu = []; for (const x of S.custom || []) for (const h of customHours(x)) add(cu, x.name, h, gradesWith(x, h));
     if (cu.length) sec.push({ id: 'c', t: 'Okulun eklediği dersler', sub: 'elle eklenen zorunlu ve seçmeli', rows: cu });
     const ot = []; for (const c of S.cards) add(ot, EP.nameOf(S, c.subj), +c.hours, []);
-    for (const r of ot) r.grades = [...new Set(S.cards.filter(c => EP.blkKey(S, c.subj, +c.hours) === r.k).map(c => (S.classes.find(x => x.id === c.classId) || {}).grade).filter(Boolean))].sort((a, b) => a - b);
+    for (const r of ot) r.grades = [...new Set(S.cards.filter(c => EP.blkKey(S, c.subj, +c.hours) === r.k).map(c => (S.classes.find(x => x.id === c.classId) || {}).grade).filter(g => g != null))].sort((a, b) => a - b);
     if (ot.length) sec.push({ id: 'o', t: 'Diğer dersler', sub: 'ek veya saati değiştirilmiş kartlar', rows: ot });
     return sec;
   }
@@ -937,18 +948,18 @@
     if (!T) return head + tabs + '<div class="empty">Bu sekme için Okul Ayarları ekranından okul türü seçin.</div>';
     if (tab === 'z') {
       const G = T.grades, zt = G.map((g, i) => T.z.reduce((a, r) => a + (r[0] === 'Serbest Etkinlikler' ? 0 : r[1][i]), 0));
-      return head + tabs + `<div class="card scroll"><table class="tbl"><thead><tr><th>Zorunlu ders</th><th>Varsayılan branş</th>${G.map(g => `<th class="n">${g}. sınıf</th>`).join('')}</tr></thead><tbody>
-        ${T.z.map(r => `<tr><td>${esc(r[0])}</td><td class="small muted">${esc(EP.branchOf(r[0], G.find((g, i) => r[1][i] > 0) || G[0], S.school.type))}</td>${r[1].map(h => `<td class="n" style="color:${h ? 'inherit' : 'var(--line)'}">${h || '–'}</td>`).join('')}</tr>`).join('')}
+      return head + tabs + `<div class="card scroll"><table class="tbl"><thead><tr><th>Zorunlu ders</th><th>Varsayılan branş</th>${G.map(g => `<th class="n">${EP.gradeLabel(g)}</th>`).join('')}</tr></thead><tbody>
+        ${T.z.map(r => { const fg = G.find((g, i) => r[1][i] > 0); return `<tr><td>${esc(r[0])}</td><td class="small muted">${esc(EP.branchOf(r[0], fg != null ? fg : G[0], S.school.type))}</td>${r[1].map(h => `<td class="n" style="color:${h ? 'inherit' : 'var(--line)'}">${h || '–'}</td>`).join('')}</tr>`; }).join('')}
         <tr><td><b>Zorunlu ders toplamı</b></td><td></td>${zt.map(v => `<td class="n"><b>${v}</b></td>`).join('')}</tr>
         <tr><td><b>Seçmeli ders saati</b></td><td></td>${T.sec.map(v => `<td class="n"><b>${v || '–'}</b></td>`).join('')}</tr>
         <tr><td><b>Toplam ders saati</b></td><td></td>${T.total.map(v => `<td class="n"><b>${v}</b></td>`).join('')}</tr></tbody></table></div>` + customList('zorunlu') + customForm('zorunlu');
     }
     const PG = T.poolGrades;
     return head + tabs + (T.poolNote ? '<div class="msg warn" style="margin-bottom:12px"><span class="ic">!</span><div>Bu türün seçmeli saat seçenekleri Anadolu Lisesi çizelgesinden uyarlanmıştır; kullanmadan önce kaynağa bakın.</div><span></span></div>' : '') +
-      `<p class="small muted" style="margin-bottom:10px">Seçmeli saat sınırı: ${PG.map(g => `${g}. sınıf ${EP.secLimit(T, g)}`).join(', ')}.</p>` +
+      `<p class="small muted" style="margin-bottom:10px">Seçmeli saat sınırı: ${PG.map(g => `${EP.gradeLabel(g)} ${EP.secLimit(T, g)}`).join(', ')}.</p>` +
       T.groups.map(gk => {
         const rows = T.pool.filter(r => r[1] === gk); if (!rows.length) return '';
-        return `<div class="card scroll" style="margin-bottom:12px"><h3 style="margin-bottom:6px">${EP.GRP[gk]}</h3><table class="tbl"><thead><tr><th>Ders</th><th>Varsayılan branş</th>${PG.map(g => `<th class="n">${g}. sınıf</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr><td>${esc(r[0])} <span class="muted">(${r[2]})</span></td><td class="small muted">${esc(EP.branchOf(r[0], PG[0], S.school.type))}</td>${r[3].split('|').map(o => `<td class="n" style="color:${o ? 'inherit' : 'var(--line)'}">${o ? o.split('/').join(' / ') : '–'}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+        return `<div class="card scroll" style="margin-bottom:12px"><h3 style="margin-bottom:6px">${EP.GRP[gk]}</h3><table class="tbl"><thead><tr><th>Ders</th><th>Varsayılan branş</th>${PG.map(g => `<th class="n">${EP.gradeLabel(g)}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr><td>${esc(r[0])} <span class="muted">(${r[2]})</span></td><td class="small muted">${esc(EP.branchOf(r[0], PG[0], S.school.type))}</td>${r[3].split('|').map(o => `<td class="n" style="color:${o ? 'inherit' : 'var(--line)'}">${o ? o.split('/').join(' / ') : '–'}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
       }).join('') + customList('secmeli') + customForm('secmeli');
   }
 
@@ -958,7 +969,7 @@
     const z = cards.filter(x => x.kind === 'zorunlu'), s = cards.filter(x => x.kind === 'secmeli'), e = cards.filter(x => x.kind === 'ek');
     const zCatalog = EP.zFor(S, T, c.grade);
     const missingZ = zCatalog.filter(item => {
-      const so = c.grade <= 4 && EP.SO_SET.has(item.name);
+      const so = c.grade >= 1 && c.grade <= 4 && EP.SO_SET.has(item.name);
       const k = EP.findSubj(S, item.name, so) || EP.trSlug(item.name) + (so ? '_SO' : '');
       return !EP.findClassSubjCard(S, c.id, k);
     });
@@ -969,11 +980,11 @@
       const ex = EP.findClassSubjCard(S, c.id, k);
       return `<option value="${k}" ${ex ? 'disabled' : ''}>${esc(SN(k))} · ${esc(SB(k))}${ex ? ' (Bu sınıfta zaten atanmış)' : ''}</option>`;
     }).join('');
-    return `<div class="card"><div class="row" style="justify-content:space-between"><div><h2>${esc(c.name)}</h2><p class="small muted" style="margin-top:4px">${c.grade}. sınıf · ${T ? esc(T.ad) : 'okul türü yok'} · Aynı sınıfa aynı ders iki kez atanamaz</p></div>
+    return `<div class="card"><div class="row" style="justify-content:space-between"><div><h2>${esc(c.name)}</h2><p class="small muted" style="margin-top:4px">${EP.gradeLabel(c.grade)} · ${T ? esc(T.ad) : 'okul türü yok'} · Aynı sınıfa aynı ders iki kez atanamaz</p></div>
       <div class="row">${pill('Toplam', st.tot + (st.tg ? '/' + st.tg : ''), st.tg ? st.tot === st.tg : undefined)}${pill('Zorunlu', st.z)}${st.lim ? pill('Seçmeli', st.s + '/' + st.lim, st.s === st.lim) : ''}${st.e ? pill('Ek', st.e) : ''}</div></div>
       <div class="row" style="margin:12px 0">
         <button class="btn sm ${missingZ.length ? 'pri' : ''}" data-act="tplMissing" data-id="${c.id}">Eksik zorunlu dersleri ekle${missingZ.length ? ` (${missingZ.length})` : ''}</button>
-        ${s.length ? `<button class="btn sm" data-act="copySec" data-id="${c.id}">Seçmelileri ${c.grade}. sınıfın diğer şubelerine kopyala</button><button class="btn sm ghost" data-act="clearSec" data-id="${c.id}">Seçmelileri temizle</button>` : ''}
+        ${s.length ? `<button class="btn sm" data-act="copySec" data-id="${c.id}">Seçmelileri ${EP.gradeLabel(c.grade)} diğer şubelerine kopyala</button><button class="btn sm ghost" data-act="clearSec" data-id="${c.id}">Seçmelileri temizle</button>` : ''}
       </div>
       <h3>Sınıftaki zorunlu dersler (${z.length})</h3>${tbl(z, 'Zorunlu ders yok. Aşağıdaki zorunlu dersler havuzundan tek tek veya “Eksik zorunlu dersleri ekle” ile toplu ekleyebilirsiniz.')}
       <h3 style="margin-top:14px">Seçmeli dersler${st.lim ? ` · ${st.s}/${st.lim} saat` : ''}</h3>
@@ -981,10 +992,10 @@
       ${tbl(s, st.lim ? 'Aşağıdaki havuzdan seçmeli ders ekleyin.' : 'Bu sınıf düzeyinde çizelgede seçmeli ders saati yok.')}
       ${e.length ? `<h3 style="margin-top:14px">Ek ve branş dışı dersler</h3>${tbl(e, '')}` : ''}</div>
 
-      ${zCatalog.length ? `<div class="card"><h2>Zorunlu dersler havuzu · ${c.grade}. sınıf</h2>
+      ${zCatalog.length ? `<div class="card"><h2>Zorunlu dersler havuzu · ${EP.gradeLabel(c.grade)}</h2>
         <p class="small muted" style="margin:4px 0 12px">${c.name} şubesine ait tüm zorunlu dersleri burada görebilir, tek tıkla ekleyebilir veya çıkarabilirsiniz. Zaten ekli olan ders ikinci kez eklenemez.</p>
         <div class="grid2">${zCatalog.map(item => {
-          const so = c.grade <= 4 && EP.SO_SET.has(item.name);
+          const so = c.grade >= 1 && c.grade <= 4 && EP.SO_SET.has(item.name);
           const k = EP.findSubj(S, item.name, so) || EP.trSlug(item.name) + (so ? '_SO' : '');
           const cur = EP.findClassSubjCard(S, c.id, k);
           const tch = cur && cur.teacherId ? S.teachers.find(x => x.id === cur.teacherId) : null;
@@ -1002,7 +1013,7 @@
           </div>`;
         }).join('')}</div></div>` : ''}
 
-      ${pool.length ? `<div class="card"><h2>Seçmeli ders havuzu · ${c.grade}. sınıf</h2>
+      ${pool.length ? `<div class="card"><h2>Seçmeli ders havuzu · ${EP.gradeLabel(c.grade)}</h2>
         <p class="small muted" style="margin:4px 0 12px">Saat düğmesine basınca ders eklenir.${T.groupRule ? ' Ortaokulda üç gruptan en az birer ders seçilmesi önerilir.' : ''}</p>
         <div class="grid2">${[...T.groups, 'OZEL'].map(gk => {
           const items = pool.filter(p => p.grp === gk); if (!items.length) return '';
@@ -1073,7 +1084,7 @@
 
       // 2) Müfredatta olup henüz sınıfa eklenmemiş zorunlu dersler
       for (const z of EP.zFor(S, T, c.grade)) {
-        const so = c.grade <= 4 && EP.SO_SET.has(z.name);
+        const so = c.grade >= 1 && c.grade <= 4 && EP.SO_SET.has(z.name);
         const k = EP.findSubj(S, z.name, so) || EP.trSlug(z.name) + (so ? '_SO' : '');
         if (seenZ.has(k) || seenZ.has(z.name.toLocaleLowerCase('tr')) || EP.findClassSubjCard(S, c.id, k)) continue;
         const br = S.subjects[k] ? SB(k) : EP.branchOf(z.name, c.grade, S.school.type);
@@ -1160,7 +1171,7 @@
         </div>
       </div>
       <div class="row" style="margin-bottom:12px;gap:10px">
-        <select data-ui="tpCls" style="max-width:190px"><option value="">Tüm sınıflar (${S.classes.length})</option>${S.classes.map(c => `<option value="${c.id}" ${clsFilter === c.id ? 'selected' : ''}>${esc(c.name)} (${c.grade}. sınıf)</option>`).join('')}</select>
+        <select data-ui="tpCls" style="max-width:190px"><option value="">Tüm sınıflar (${S.classes.length})</option>${S.classes.map(c => `<option value="${c.id}" ${clsFilter === c.id ? 'selected' : ''}>${esc(c.name)} (${EP.gradeLabel(c.grade)})</option>`).join('')}</select>
         <input id="tpQ" value="${esc(S.ui.tpQ || '')}" placeholder="Ders, sınıf veya branş ara…" style="max-width:240px">
         <label class="row small" style="gap:6px;cursor:pointer"><input type="checkbox" data-ui="tpOnlyBranch" ${onlyBranch ? 'checked' : ''}> Sadece branşıma uygun</label>
         <label class="row small" style="gap:6px;cursor:pointer"><input type="checkbox" data-ui="tpHideOther" ${hideOther ? 'checked' : ''}> Başka öğretmendekileri gizle</label>
@@ -1354,7 +1365,7 @@
       cls += ' ' + colorOf(cd.subj) + (cell.k ? ' cont' : '');
       if (cell.lock) cls += ' lk';
       inner = `<span class="s">${esc(SS(cd.subj))}${cell.k ? '' : cell.len > 1 ? ' <small>×' + cell.len + '</small>' : ''}</span>${cell.k ? '' : `<span class="x">${kind === 'c' ? esc(tShort(t)) : esc(cName(cd.classId))}</span>`}${cell.lock && !cell.k ? LOCK_SVG : ''}`;
-      act += ` data-id="${cell.id}" data-k="${cell.k}"${!cell.lock && !running ? ' draggable="true"' : ''}`;
+      act += ` data-id="${cell.id}" data-k="${cell.k}"${!cell.lock && !running && !bulkMode ? ' draggable="true"' : ''}`;
       if (ed && sel === cell.id) cls += ' sel';
       if (ed && cell.k === 0 && ed.sw.has(cell.id)) cls += ' swp';
       if (bulkSel.has(cell.id)) cls += ' bsel';
@@ -1390,7 +1401,7 @@
           if (cell) {
             cls += ' ' + colorOf(cell.card.subj) + (cell.lock ? ' lk' : '');
             inner = (kind === 'c' ? esc(SS(cell.card.subj)) : esc(cName(cell.card.classId))) + (cell.lock && !cell.k ? '·' : '');
-            act += ` data-id="${cell.id}" data-k="${cell.k}"${!cell.lock && !running ? ' draggable="true"' : ''}`;
+            act += ` data-id="${cell.id}" data-k="${cell.k}"${!cell.lock && !running && !bulkMode ? ' draggable="true"' : ''}`;
             if (sel === cell.id) cls += ' sel';
             if (ed && e.id === relId && cell.k === 0 && ed.sw.has(cell.id)) cls += ' swp';
             if (bulkSel.has(cell.id)) cls += ' bsel';
@@ -1616,8 +1627,8 @@
   /* 12. Haftalık Ders Programları */
   function vTimetables() {
     const o = EP.occ(S);
-    return H('Haftalık Ders Programları', 'Sınıf, öğretmen, derslik ve tam çarşaf görünümleri.',
-      `<button class="btn pri" data-step="reports">Resmi Belge Önizle / Yazdır</button>`) + board(o, true);
+    return H('Haftalık Ders Programları', 'Sınıf, öğretmen, derslik ve tam çarşaf görünümleri. Herhangi bir derse çift tıklayarak anında kilitleyip açabilir veya Toplu Kilit Seçimi ile birden fazla dersi seçebilirsiniz.',
+      `<button class="btn pri" data-step="reports">Resmi Belge Önizle / Yazdır</button>`) + lockToolsCard() + board(o, true);
   }
 
   /* 13. Analiz ve İstatistikler */
@@ -1627,7 +1638,7 @@
       EP.vQuality(S, o, tot) +
       `<div class="card scroll" style="margin-top:14px"><h2 style="margin-bottom:8px">Sınıf Doluluk ve Çizelge Uyumu</h2>
         <table class="tbl"><thead><tr><th>Şube</th><th class="n">Düzey</th><th class="n">Zorunlu</th><th class="n">Seçmeli</th><th class="n">Toplam</th><th class="n">Açık Saat</th><th class="n">Öğretmensiz</th></tr></thead><tbody>
-        ${S.classes.map(c => { const st = EP.clsStat(S, c); return `<tr><td><b>${esc(c.name)}</b></td><td class="n">${c.grade}.</td><td class="n">${st.z}</td><td class="n">${st.s}${st.lim ? '/' + st.lim : ''}</td><td class="n"><b>${st.tot}</b>${st.tg ? '/' + st.tg : ''}</td><td class="n">${EP.classOpen(S, c).tot}</td><td class="n" style="color:${st.noT ? 'var(--err)' : 'inherit'}">${st.noT}</td></tr>`; }).join('')}
+        ${S.classes.map(c => { const st = EP.clsStat(S, c); return `<tr><td><b>${esc(c.name)}</b></td><td class="n">${EP.gradeShort(c.grade)}</td><td class="n">${st.z}</td><td class="n">${st.s}${st.lim ? '/' + st.lim : ''}</td><td class="n"><b>${st.tot}</b>${st.tg ? '/' + st.tg : ''}</td><td class="n">${EP.classOpen(S, c).tot}</td><td class="n" style="color:${st.noT ? 'var(--err)' : 'inherit'}">${st.noT}</td></tr>`; }).join('')}
         </tbody></table></div>`;
   }
 
@@ -1677,34 +1688,81 @@
       const mRows = (dCfg.monthly && dCfg.monthly[ym]) || EP.buildMonthlyDuty(S, ym, mMode);
       const [yr, mo] = ym.split('-').map(Number);
       const ayTxt = `${(EP.AY_AD || [])[(mo || 1) - 1] || ''} ${yr}`;
-      const monthlyCard = `<div class="card scroll">
-        <div class="row" style="justify-content:space-between;margin-bottom:12px">
+      const reassignClosed = dCfg.reassignClosedDay !== false;
+      const openRowsCount = mRows.filter(r => !r.closed).length;
+      const closedRowsCount = mRows.filter(r => r.closed).length;
+      const rowByDate = new Map(mRows.map(r => [r.date, r]));
+      const firstDowJs = new Date(yr, mo - 1, 1, 12, 0, 0).getDay(); // 0=Paz..6=Cmt
+      const leadEmpty = firstDowJs === 0 ? 6 : firstDowJs - 1;
+      const daysInMo = new Date(yr, mo, 0).getDate();
+      const calCells = [];
+      for (let i = 0; i < leadEmpty; i++) calCells.push('<div class="dcal-day empty"></div>');
+      for (let day = 1; day <= daysInMo; day++) {
+        const dt = new Date(yr, mo - 1, day, 12, 0, 0);
+        const jsDow = dt.getDay();
+        const dow = jsDow === 0 ? 6 : jsDow - 1;
+        const iso = `${yr}-${String(mo).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const row = rowByDate.get(iso);
+        if (dow >= D || !row) {
+          calCells.push(`<button type="button" class="dcal-day wknd" disabled><div class="dn"><span>${day}</span><span class="small muted">Tatil</span></div><div class="ds">Hafta sonu</div></button>`);
+        } else if (row.closed) {
+          calCells.push(`<button type="button" class="dcal-day closed" data-act="toggleDutyDate" data-id="${iso}" title="Günü tekrar açmak için tıklayın"><div class="dn"><span>${day}</span><span class="tag" style="background:var(--errBg);color:var(--err)">Kapalı</span></div><div class="ds">Tatil / Kapalı · Açmak için tıkla</div></button>`);
+        } else {
+          const tCnt = Object.values(row.posts || {}).reduce((a, arr) => a + (arr || []).length, 0);
+          calCells.push(`<button type="button" class="dcal-day" data-act="toggleDutyDate" data-id="${iso}" title="Bu günü kapatmak (tatil yapmak) için tıklayın"><div class="dn"><span>${day}</span><span class="tag" style="background:var(--okBg);color:var(--ok)">${tCnt} kişi</span></div><div class="ds">${row.admin ? esc(row.admin) : 'Açık okul günü'}</div></button>`);
+        }
+      }
+
+      const monthlyCard = `<div class="card" style="margin-bottom:14px">
+        <div class="row" style="justify-content:space-between;margin-bottom:10px">
           <div>
-            <h2>${esc(ayTxt)} Aylık Nöbet Çizelgesi (${mRows.length} okul günü)</h2>
-            <p class="small muted" style="margin-top:3px">Öğretmenin ders programına uygun haftalık günü korunur; isterseniz haftadan haftaya nöbet yerleri otomatik döndürülür. Herhangi bir günün hücresini elle düzenleyebilirsiniz.</p>
+            <h2>${esc(ayTxt)} Aylık Nöbet Takvimi (${openRowsCount} açık · ${closedRowsCount} kapalı gün)</h2>
+            <p class="small muted" style="margin-top:3px">Takvimde herhangi bir okul gününe tıklayarak o günü <b>kapatabilir</b> (resmî tatil, ara tatil, kar tatili vb.) veya tekrar <b>açabilirsiniz</b>. <b>Kesin kural:</b> Bir öğretmen bir takvim haftasında <b>en fazla 1 gün</b> nöbet tutar.</p>
           </div>
           <div class="row">
+            ${closedRowsCount ? `<button class="btn sm ghost" data-act="clearMonthClosed">Bu Aydaki Kapalı Günleri Aç (${closedRowsCount})</button>` : ''}
             <button class="btn pri" data-act="exMonthlyPdf">Aylık PDF İndir (.pdf)</button>
             <button class="btn" data-act="exMonthlyPrint">Yazdır</button>
             <button class="btn" data-act="exMonthlyExcel">Excel (.xls)</button>
             <button class="btn" data-act="exMonthlyWord">Word (.doc)</button>
           </div>
         </div>
-        <div class="row" style="margin-bottom:12px;gap:10px;align-items:flex-end">
+        <div class="row" style="margin-bottom:10px;gap:10px;align-items:flex-end;flex-wrap:wrap">
           <label class="f" style="width:180px">Ay / Yıl seçin<input type="month" data-dutycfg="month" value="${esc(ym)}"></label>
-          <label class="f" style="min-width:280px">Aylık dağıtım biçimi<select data-dutycfg="monthlyMode">
+          <label class="f" style="min-width:260px">Aylık dağıtım biçimi<select data-dutycfg="monthlyMode">
             <option value="rotate" ${mMode === 'rotate' ? 'selected' : ''}>Haftadan haftaya nöbet yerlerini döndür (Adil rotasyon)</option>
             <option value="fixed" ${mMode === 'fixed' ? 'selected' : ''}>Her hafta aynı gün ve aynı nöbet yeri (Sabit)</option>
           </select></label>
-          <button class="btn pri" data-act="buildMonthlyDuty">Aylık Çizelgeyi Yeniden Oluştur</button>
+          <label class="f" style="min-width:290px">Kapalı gün kuralı<span class="row small" style="min-height:40px;padding:0 10px;border:1px solid var(--line);border-radius:9px"><input type="checkbox" data-dutycfg="reassignClosedDay" ${reassignClosed ? 'checked' : ''}> Günü kapanan öğretmeni o haftanın uygun açık gününe kaydır</span></label>
+          <button class="btn pri" data-act="buildMonthlyDuty">Aylık Çizelgeyi Yeniden Dağıt</button>
         </div>
-        <table class="tbl"><thead><tr><th style="width:110px">Tarih</th><th style="width:100px">Gün</th>${pl.map(p => `<th>${esc(p)}</th>`).join('')}<th>Nöbetçi İdareci</th></tr></thead><tbody>
-        ${mRows.map((row, rIdx) => `<tr>
-          <td><b>${esc(row.date.split('-').reverse().join('.'))}</b></td>
-          <td>${GUN[row.dow]} <span class="small muted">(${row.weekNum}. hf)</span></td>
-          ${pl.map(p => `<td><input data-mcell="${esc(ym)}|${rIdx}|${esc(p)}" value="${esc(((row.posts || {})[p] || []).join(', '))}" style="width:100%;min-width:130px"></td>`).join('')}
-          <td><input data-madmin="${esc(ym)}|${rIdx}" value="${esc(row.admin || '')}" style="width:100%;min-width:120px"></td>
-        </tr>`).join('')}
+        <div class="dcal">
+          ${['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'].map(g => `<div class="dcal-hd">${g}</div>`).join('')}
+          ${calCells.join('')}
+        </div>
+      </div>
+      <div class="card scroll">
+        <div class="row" style="justify-content:space-between;margin-bottom:10px">
+          <div>
+            <h2>${esc(ayTxt)} Günlük Nöbet Dağılım Tablosu</h2>
+            <p class="small muted" style="margin-top:2px">Hücreleri elle düzenleyebilirsiniz; aynı takvim haftasında bir öğretmene ikinci kez nöbet yazılması otomatik engellenir.</p>
+          </div>
+        </div>
+        <table class="tbl"><thead><tr><th style="width:110px">Tarih</th><th style="width:105px">Gün</th>${pl.map(p => `<th>${esc(p)}</th>`).join('')}<th>Nöbetçi İdareci</th><th style="width:86px">Durum</th></tr></thead><tbody>
+        ${mRows.map((row, rIdx) => row.closed
+          ? `<tr style="opacity:.65;background:var(--soft)">
+              <td><b>${esc(row.date.split('-').reverse().join('.'))}</b></td>
+              <td>${GUN[row.dow]} <span class="small muted">(${row.weekNum}. hf)</span></td>
+              <td colspan="${pl.length + 1}" class="small" style="color:var(--err);font-weight:600">KAPALI / TATİL GÜNÜ — Bu güne nöbet dağıtılmaz</td>
+              <td><button class="btn sm ghost" data-act="toggleDutyDate" data-id="${row.date}">Günü Aç</button></td>
+            </tr>`
+          : `<tr>
+              <td><b>${esc(row.date.split('-').reverse().join('.'))}</b></td>
+              <td>${GUN[row.dow]} <span class="small muted">(${row.weekNum}. hf)</span></td>
+              ${pl.map(p => `<td><input data-mcell="${esc(ym)}|${rIdx}|${esc(p)}" value="${esc(((row.posts || {})[p] || []).join(', '))}" style="width:100%;min-width:130px"></td>`).join('')}
+              <td><input data-madmin="${esc(ym)}|${rIdx}" value="${esc(row.admin || '')}" style="width:100%;min-width:120px"></td>
+              <td><button class="btn sm ghost" data-act="toggleDutyDate" data-id="${row.date}" title="Günü kapat (tatil yap)">Kapat</button></td>
+            </tr>`).join('')}
         </tbody></table>
       </div>`;
       return head + tabs + kpis + settingsCard + monthlyCard;
@@ -1896,7 +1954,7 @@
 
   function pmEntries(cls) {
     const T = EP.typeOf(S), g = cls.grade, cards = S.cards.filter(x => x.classId === cls.id), out = { z: [], s: [], e: [] }, seen = new Set();
-    const so = n => g <= 4 && EP.SO_SET.has(n);
+    const so = n => g >= 1 && g <= 4 && EP.SO_SET.has(n);
     for (const z of EP.zFor(S, T, g)) { const k = EP.findSubj(S, z.name, so(z.name)), cd = k && cards.find(x => x.subj === k && x.kind !== 'secmeli'); if (cd) seen.add(cd.id); out.z.push({ name: z.name, hours: [z.hours], kind: 'zorunlu', card: cd || null }); }
     for (const p of EP.poolFor(S, T, g)) { const k = EP.findSubj(S, p.name, false), cd = k && cards.find(x => x.subj === k && x.kind === 'secmeli'); if (cd) seen.add(cd.id); out.s.push({ name: p.name, hours: p.opts, kind: 'secmeli', card: cd || null }); }
     for (const cd of cards) if (!seen.has(cd.id)) (cd.kind === 'secmeli' ? out.s : cd.kind === 'zorunlu' ? out.z : out.e).push({ name: SN(cd.subj), hours: [+cd.hours], kind: cd.kind, card: cd });
@@ -1934,7 +1992,7 @@
         body = `<div class="small muted">${esc(cd.pattern)} · ${cd.hours} sa · ${esc(t ? tShort(t) : 'öğretmensiz')}</div><div class="row" style="gap:4px;flex-wrap:wrap;margin-top:4px">${chips}${alt.map(p => `<button class="btn sm ghost" data-act="pmPat" data-id="${cd.id}" data-p="${p}" style="width:auto">→ ${p}</button>`).join('')}</div>`;
       } else {
         const btns = en.hours.map(hh => {
-          const tmp = { subj: EP.findSubj(S, en.name, cls.grade <= 4 && EP.SO_SET.has(en.name)) || en.name, hours: hh };
+          const tmp = { subj: EP.findSubj(S, en.name, cls.grade >= 1 && cls.grade <= 4 && EP.SO_SET.has(en.name)) || en.name, hours: hh };
           return EP.effPats(S, tmp).map(p => `<button class="btn sm" data-act="pmAdd" data-n="${esc(en.name)}" data-kind="${en.kind}" data-h="${hh}" data-p="${p}" style="width:auto">${en.hours.length > 1 || EP.effPats(S, tmp).length > 1 ? hh + ' sa · ' : ''}${p}</button>`).join('');
         }).join('');
         body = `<div class="row" style="gap:4px;flex-wrap:wrap;margin-top:4px">${btns}</div>`;
@@ -2442,7 +2500,12 @@
       reports: () => EP.vRapor(S, H, isMember()), backup_sync: vProje, account: vAccount,
       system: vSystem, help: vHelp
     };
+    const prevScrolls = [...document.querySelectorAll('#view .scroll')].map(el => [el.scrollLeft, el.scrollTop]);
     $('#view').innerHTML = (views[step] || vDagitim)();
+    const nextScrolls = document.querySelectorAll('#view .scroll');
+    prevScrolls.forEach(([sl, st], idx) => {
+      if (nextScrolls[idx]) { nextScrolls[idx].scrollLeft = sl; nextScrolls[idx].scrollTop = st; }
+    });
     renderUpdateBanner();
     renderPop();
   }
@@ -2575,20 +2638,37 @@
       case 'cell': {
         if (running) break;
         const key = a.dataset.key, tid = a.dataset.id || '', ent = a.dataset.ent, kind = a.dataset.kind;
+        if (Date.now() - suppressNextCellClickAt < 250) break;
         if (tid && (bulkMode || e.ctrlKey || e.metaKey)) {
+          if (cellClickTimer) { clearTimeout(cellClickTimer); cellClickTimer = null; }
           if (bulkSel.has(tid)) bulkSel.delete(tid); else bulkSel.add(tid);
           lastCellClick = null; sel = ''; closePop(); render();
           break;
         }
         const now = Date.now();
-        if (tid && S.place[tid] && lastCellClick && lastCellClick.id === tid && lastCellClick.ent === ent && (now - lastCellClick.at) <= 450) {
+        if (tid && S.place[tid] && (e.detail >= 2 || (lastCellClick && lastCellClick.id === tid && lastCellClick.ent === ent && (now - lastCellClick.at) <= 550))) {
+          if (cellClickTimer) { clearTimeout(cellClickTimer); cellClickTimer = null; }
           toggleCellLockQuick(tid);
           break;
         }
-        lastCellClick = tid ? { id: tid, ent, key, at: now } : null;
-        if (sel && tid !== sel && moveTo(sel, key, tid, ent)) { sel = ''; closePop(); commit(); toast('Ders taşındı.'); break; }
-        if (tid && tid === sel && pop && pop.id === tid) { sel = ''; closePop(); render(); break; }
-        sel = tid; pop = { key, ent, kind, id: tid }; render();
+        if (sel && tid !== sel && moveTo(sel, key, tid, ent)) {
+          if (cellClickTimer) { clearTimeout(cellClickTimer); cellClickTimer = null; }
+          lastCellClick = null; sel = ''; closePop(); commit(); toast('Ders taşındı.');
+          break;
+        }
+        if (tid && S.place[tid]) {
+          lastCellClick = { id: tid, ent, key, at: now };
+          if (cellClickTimer) clearTimeout(cellClickTimer);
+          cellClickTimer = setTimeout(() => {
+            cellClickTimer = null;
+            if (tid === sel && pop && pop.id === tid) { sel = ''; closePop(); render(); }
+            else { sel = tid; pop = { key, ent, kind, id: tid }; render(); }
+          }, 230);
+          break;
+        }
+        lastCellClick = null;
+        if (cellClickTimer) { clearTimeout(cellClickTimer); cellClickTimer = null; }
+        sel = ''; pop = { key, ent, kind, id: '' }; render();
       } break;
       case 'pClose': closePop(); break;
       case 'pmOpen': if (pop) { pop.add = true; pop.id = ''; pop.cls = pop.cls || ''; sel = ''; renderPop(); } break;
@@ -2619,7 +2699,7 @@
       case 'pmAdd': if (pop) {
         const tch = pop.kind === 't' ? entOf('t', pop.ent) : null, cls = pop.kind === 'c' ? entOf('c', pop.ent) : S.classes.find(c => c.id === pop.cls);
         if (!cls) break;
-        const k0 = EP.findSubj(S, a.dataset.n, cls.grade <= 4 && EP.SO_SET.has(a.dataset.n));
+        const k0 = EP.findSubj(S, a.dataset.n, cls.grade >= 1 && cls.grade <= 4 && EP.SO_SET.has(a.dataset.n));
         if (k0 && EP.findClassSubjCard(S, cls.id, k0)) {
           toast(`${cls.name} sınıfına ${a.dataset.n} dersi zaten atanmış!`);
           break;
@@ -2744,7 +2824,7 @@
         for (const g of G) {
           const n = +($('#bg' + g) || {}).value || 0; let k = 0, mg = 0;
           while (mg < n && k < 26) {
-            const nm = g + '/' + String.fromCharCode(65 + k++); if (ex.has(nm)) continue;
+            const nm = (g === 0 ? 'Hz/' : g + '/') + String.fromCharCode(65 + k++); if (ex.has(nm)) continue;
             const c = { id: uid(), name: nm, grade: g, shift: 'full', studentCount: 28, homeRoomId: '', closed: [] };
             S.classes.push(c); EP.closeExtra(S, c); made.push(...(T ? EP.applyTemplate(S, c, false) : [])); mg++;
           }
@@ -2752,7 +2832,7 @@
         syncSubj(); const r = S.ui.amode === 'off' ? null : EP.assignCards(S, made); S.ui.bulk = false; commit();
         toast('Şubeler ve zorunlu dersler oluşturuldu. ' + (r ? assignMsg(r) : ''));
       } break;
-      case 'addCls': snap(); S.classes.push({ id: uid(), name: 'Yeni şube', grade: 5, shift: 'full', studentCount: 28, homeRoomId: '', closed: [] }); commit(); break;
+      case 'addCls': { const T = EP.typeOf(S), g0 = T && T.grades.length ? T.grades[0] : 5; snap(); S.classes.push({ id: uid(), name: 'Yeni şube', grade: g0, shift: 'full', studentCount: 28, homeRoomId: '', closed: [] }); commit(); } break;
       case 'tplMissing': {
         const c = S.classes.find(x => x.id === id);
         if (!EP.typeOf(S) || EP.gIdx(EP.typeOf(S), c.grade) < 0) { toast('Bu sınıf düzeyi için çizelge yok.'); break; }
@@ -2852,7 +2932,7 @@
         if (k === '__new') {
           const nm = $('#ekN').value.trim();
           if (!nm) { toast('Yeni dersin adını yazın.'); break; }
-          const existingKey = EP.findSubj(S, nm, c.grade <= 4 && EP.SO_SET.has(nm));
+          const existingKey = EP.findSubj(S, nm, c.grade >= 1 && c.grade <= 4 && EP.SO_SET.has(nm));
           if (existingKey && EP.findClassSubjCard(S, id, existingKey)) {
             toast(`${c.name} sınıfına ${nm} dersi zaten atanmış! Aynı sınıfa aynı ders iki kez atanamaz.`);
             break;
@@ -2970,7 +3050,23 @@
         const rows = EP.buildMonthlyDuty(S, ym, mode);
         S.ui.dutyTab = 'monthly';
         commit();
-        toast(`${ym} için ${rows.length} okul gününü kapsayan aylık nöbet çizelgesi oluşturuldu.`);
+        const openN = rows.filter(r => !r.closed).length;
+        toast(`${ym} için ${openN} açık okul gününde (haftada max 1 gün/öğretmen) aylık nöbet oluşturuldu.`);
+      } break;
+      case 'toggleDutyDate': {
+        if (!id) break;
+        snap();
+        const closedNow = EP.toggleDutyClosedDate(S, id);
+        S.ui.dutyTab = 'monthly';
+        commit();
+        toast(`${id.split('-').reverse().join('.')} ${closedNow ? 'kapatıldı (tatil)' : 'tekrar açıldı'} ve aylık nöbet kurala göre yeniden dağıtıldı.`);
+      } break;
+      case 'clearMonthClosed': {
+        const ym = (S.duty && S.duty.month) || EP.defaultYearMonth();
+        snap();
+        const cnt = EP.clearMonthClosedDates(S, ym);
+        commit();
+        toast(`${cnt} kapalı gün açıldı ve aylık nöbet yeniden dağıtıldı.`);
       } break;
       case 'exDutyPdf': case 'exDutyPrint': case 'exDutyWord': {
         const label = act === 'exDutyWord' ? 'Haftalık nöbet Word (.doc)' : act === 'exDutyPrint' ? 'Haftalık nöbet yazdırma' : 'Haftalık nöbet PDF (.pdf)';
@@ -3181,7 +3277,7 @@
     if (el.dataset.cls) {
       const c = S.classes.find(x => x.id === el.dataset.cls); if (!c) return; snap();
       if (el.dataset.f === 'rehber') { EP.setRehber(S, c, el.value); const { bad } = EP.placedCore(S); bad.forEach(b => delete S.place[b]); commit(); return; }
-      c[el.dataset.f] = el.dataset.f === 'grade' ? Math.max(1, +el.value || c.grade) : el.value; commit(); return;
+      c[el.dataset.f] = el.dataset.f === 'grade' ? Math.max(0, Math.min(12, el.value === '' ? c.grade : +el.value)) : el.value; commit(); return;
     }
     if (el.dataset.bld) { const b = S.buildings.find(x => x.id === el.dataset.bld); if (b) { snap(); b[el.dataset.f] = el.value; commit(); } return; }
     if (el.dataset.btr) { const [b1, b2] = el.dataset.btr.split('|'); const b = S.buildings.find(x => x.id === b1); if (b) { snap(); b.transitionPeriods = b.transitionPeriods || {}; b.transitionPeriods[b2] = Math.max(0, +el.value || 0); commit(); } return; }
@@ -3191,20 +3287,30 @@
     if (el.dataset.dadmin != null) { snap(); S.duty = S.duty || { places: [] }; S.duty.admin = S.duty.admin || {}; S.duty.admin[el.dataset.dadmin] = el.value; commit(); return; }
     if (el.dataset.dutycfg) {
       snap();
-      S.duty = S.duty || { places: ['Bahçe', 'Koridor'], admin: {}, monthly: {} };
+      S.duty = S.duty || { places: ['Bahçe', 'Koridor'], admin: {}, closedDates: [], monthly: {} };
       const f = el.dataset.dutycfg;
       S.duty[f] = el.type === 'checkbox' ? el.checked : el.value;
-      if (f === 'month' || f === 'monthlyMode') EP.buildMonthlyDuty(S, S.duty.month, S.duty.monthlyMode);
+      if (['month', 'monthlyMode', 'reassignClosedDay', 'strategy', 'avoidZeroDay'].includes(f)) {
+        EP.buildMonthlyDuty(S, S.duty.month || EP.defaultYearMonth(), S.duty.monthlyMode || 'rotate');
+      }
       commit(); return;
     }
     if (el.dataset.mcell) {
       const [ym, rIdxStr, place] = el.dataset.mcell.split('|');
+      const rIdx = +rIdxStr;
       const rows = S.duty && S.duty.monthly && S.duty.monthly[ym];
-      const row = rows && rows[+rIdxStr];
+      const row = rows && rows[rIdx];
       if (row) {
+        const nextNames = el.value.split(',').map(x => x.trim()).filter(Boolean);
+        const dup = EP.checkMonthlyWeekDup(rows, rIdx, place, nextNames);
+        if (dup) {
+          toast(`Kural uyarısı: ${dup.name} bu hafta (${GUN[dup.dow]} ${dup.date.split('-').reverse().join('.')}) zaten nöbetçi! Bir öğretmen haftada en fazla 1 gün nöbet tutabilir.`);
+          el.value = ((row.posts || {})[place] || []).join(', ');
+          return;
+        }
         snap();
         row.posts = row.posts || {};
-        row.posts[place] = el.value.split(',').map(x => x.trim()).filter(Boolean);
+        row.posts[place] = nextNames;
         save();
       }
       return;
@@ -3361,13 +3467,51 @@
     document.querySelectorAll('.dtgt,.dswp,.drop-over,.dragging').forEach(x => x.classList.remove('dtgt', 'dswp', 'drop-over', 'dragging'));
   });
 
-  /* Çift tık ile anında ders kilitleme / kilit açma (yedek dinleyici) */
-  document.addEventListener('dblclick', e => {
+  /* Toplu Kilit Seçimi sürükleyerek tarama (click-and-drag seçim) */
+  function markBulkDom(bid, on) {
+    document.querySelectorAll(`td[data-act="cell"][data-id="${CSS.escape ? CSS.escape(bid) : bid}"]`).forEach(el => {
+      el.classList.toggle('bsel', on);
+    });
+  }
+  document.addEventListener('mousedown', e => {
+    if (!bulkMode || running || e.button !== 0) return;
     const td = e.target.closest && e.target.closest('td[data-act="cell"][data-id]');
-    if (!td || running) return;
+    if (!td) return;
     const bid = td.dataset.id;
     if (!bid || !S.place[bid]) return;
     e.preventDefault();
+    const add = !bulkSel.has(bid);
+    if (add) bulkSel.add(bid); else bulkSel.delete(bid);
+    markBulkDom(bid, add);
+    bulkDrag = { add, visited: new Set([bid]) };
+  });
+  document.addEventListener('mouseover', e => {
+    if (!bulkDrag || !bulkMode || running) return;
+    const td = e.target.closest && e.target.closest('td[data-act="cell"][data-id]');
+    if (!td) return;
+    const bid = td.dataset.id;
+    if (!bid || !S.place[bid] || bulkDrag.visited.has(bid)) return;
+    bulkDrag.visited.add(bid);
+    if (bulkDrag.add) bulkSel.add(bid); else bulkSel.delete(bid);
+    markBulkDom(bid, bulkDrag.add);
+  });
+  document.addEventListener('mouseup', () => {
+    if (!bulkDrag) return;
+    bulkDrag = null;
+    suppressNextCellClickAt = Date.now();
+    sel = '';
+    closePop();
+    render();
+  });
+
+  /* Çift tık ile anında ders kilitleme / kilit açma */
+  document.addEventListener('dblclick', e => {
+    const td = e.target.closest && e.target.closest('td[data-act="cell"][data-id]');
+    if (!td || running || bulkMode) return;
+    const bid = td.dataset.id;
+    if (!bid || !S.place[bid]) return;
+    e.preventDefault();
+    if (cellClickTimer) { clearTimeout(cellClickTimer); cellClickTimer = null; }
     toggleCellLockQuick(bid);
   });
 

@@ -1,5 +1,20 @@
 # DersMatrix Ultimate (by EvrakPlus) — Değişiklik Geçmişi (CHANGELOG)
 
+## [2.3.0] - 2026-11-25
+
+### Yenilikler ve Düzeltmeler
+- **MEB TTKB 2025/2026 Haftalık Ders Çizelgeleri & 6 Grupta 26 Okul Türü**:
+  - `Okul Ayarları` ekranında tüm okul türleri 6 resmî kategoride gruplandırıldı: *Ortaokul Kurumları (5–8)*, *Genel Ortaöğretim (Anadolu/Fen/SBL + Hazırlık)*, *Özel Program Uygulayan Proje Liseleri (45 sa · Hazırlık + 9–12)*, *Anadolu İmam Hatip Liseleri (9–12 / Hazırlık / Fen-Sosyal Programı)*, *Güzel Sanatlar ve Spor Liseleri* ve *Mesleki/Çok Programlı/Özel Kurumlar*.
+  - Yeni resmî çizelgeler eklendi: **Spor Ortaokulu (TTKB 113)**, **Güzel Sanatlar Müzik Ortaokulu (TTKB 114)**, **Hazırlık Sınıfı Bulunan Anadolu/Fen/Sosyal Bilimler/İHL Liseleri**, **Özel Program Uygulayan Anadolu (TTKB 104) / Fen (TTKB 24) / SBL (TTKB 25)**, **Güzel Sanatlar Lisesi Görsel Sanatlar / Tiyatro / Müzik / Türk Müziği (TTKB 06–07)**, **Spor Lisesi (TTKB 102)** ve **Tematik Spor Lisesi (TTKB 103)**.
+  - **SBL 11. sınıf Osmanlı Türkçesi** (`[2,2,2,0]`), **Fen Lisesi**, **SBL** ve **AİHL** seçmeli havuzları birebir TTKB kararlarına göre güncellendi; tam **Hazırlık Sınıfı (`grade: 0` → `Hz/A`)** desteği eklendi.
+- **Sorunsuz Kurulum & Güncelleme Deneyimi (NSIS Fix)**: İlk kurulum ve uygulama içi güncelleme sırasında çıkan *"DersMatrix Ultimate kapatılamaz / elle kapatın ve Tekrar'a tıklayın"* uyarısı özel NSIS kurulum makrosu (`installer.nsh`) ve gecikmeli temiz kapanış ile tamamen giderildi.
+- **Haftalık Ders Programları & Dağıtım — Çift Tıkla Kilit & Sürükleyerek Toplu Kilit Seçimi**:
+  - Tek tık işlem menüsü gecikmeli açılarak çift tıkla kilit/kilit açma işleminin tüm program şablonlarında (Sınıf, Öğretmen, Derslik, Sınıf Çarşafı, Öğretmen Çarşafı — hem `Dağıtım ve Program` hem `Haftalık Ders Programları` sayfalarında) kesintisiz çalışması sağlandı.
+  - **Toplu kilitleme araçları** `Haftalık Ders Programları` sayfasına da eklendi; toplu seçim modunda sürükleme çakışması kapatıldı, fareyle sürükleyerek çoklu hücre seçme ve tablo kaydırma konumunu (`scrollLeft`) koruma eklendi.
+- **Okul Nöbeti — Etkileşimli Aylık Takvim, Gün Kapatma/Açma ve Haftada En Fazla 1 Gün Kuralı**:
+  - Bir öğretmen bir takvim haftasında **kesinlikle en fazla 1 gün** nöbet tutar (hem otomatik dağıtımda hem elle düzenlemede doğrulanır).
+  - Aylık nöbet sekmesine etkileşimli **Aylık Takvim** eklendi: herhangi bir okul gününe tıklayarak tatil/kapalı ilan edebilir veya açabilirsiniz; nöbet dağıtımı ders programına ve kapalı günlere göre otomatik güncellenir.
+
 ## [2.2.2] - 2026-11-25
 
 ### Düzeltmeler

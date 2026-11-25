@@ -10,10 +10,30 @@ import { createBlankProject, createConstraint, makeEntityMeta, nowIso } from './
 const LEGACY_TYPE_MAP = {
   ilk: 'ortaokul',
   iho: 'imam_hatip_ortaokulu',
+  spor_oo: 'spor_ortaokulu',
+  muzik_oo: 'guzel_sanatlar_muzik_ortaokulu',
   al: 'anadolu_lisesi',
+  al_hz: 'anadolu_lisesi_hazirlik',
   fen: 'fen_lisesi',
+  fen_hz: 'fen_lisesi_hazirlik',
   sbl: 'sosyal_bilimler_lisesi',
-  aihl: 'anadolu_imam_hatip_lisesi'
+  sbl_hz: 'sosyal_bilimler_lisesi_hazirlik',
+  ozel_al: 'ozel_program_anadolu_lisesi',
+  ozel_fen: 'ozel_program_fen_lisesi',
+  ozel_sbl: 'ozel_program_sosyal_bilimler_lisesi',
+  aihl: 'anadolu_imam_hatip_lisesi',
+  aihl_hz: 'anadolu_imam_hatip_lisesi_hazirlik',
+  aihl_fsb: 'anadolu_imam_hatip_lisesi_fsb',
+  gsl_gorsel: 'gsl_gorsel_sanatlar',
+  gsl_tiyatro: 'gsl_tiyatro',
+  gsl_muzik: 'gsl_muzik',
+  gsl_tmuzik: 'gsl_turk_muzigi',
+  spor_lise: 'spor_lisesi',
+  spor_lise_tematik: 'spor_lisesi_tematik',
+  mtal: 'mesleki_teknik_anadolu_lisesi',
+  cpal: 'cok_programli_anadolu_lisesi',
+  ozel_ogretim: 'ozel_ogretim',
+  ozel_egitim: 'ozel_egitim'
 };
 
 /**
@@ -123,7 +143,7 @@ export function migrateProject(raw) {
   base.classes = (raw.classes || []).map(c => ({
     ...makeEntityMeta({ id: c.id }),
     name: c.name || 'Şube',
-    grade: Number(c.grade || 5),
+    grade: c.grade != null && c.grade !== '' ? Number(c.grade) : 5,
     shift: ShiftType.FULL,
     studentCount: 30,
     homeRoomId: null,
