@@ -42,6 +42,8 @@
   let bulkMode = false;
   const bulkSel = new Set();
   let nativeStopMode = null; // null | 'stop' | 'maxFinish'
+  let lastCellClick = null;
+  let lastDblToggleAt = 0;
 
   /* ---------- Canlı ve Birbirinden Belirgin Ders Renkleri ---------- */
   let SK = [];
@@ -179,7 +181,7 @@
     $('#mX').addEventListener('click', () => { M.innerHTML = ''; });
   }
 
-  const APP_VER = (bridge && bridge.appVersion) || '2.2.1';
+  const APP_VER = (bridge && bridge.appVersion) || '2.2.2';
   let updateInfo = null;
   let updateProgress = null;
   const isMember = () => Boolean(authUser && (authUser.loggedIn || authUser.entitlementValid));
@@ -1331,14 +1333,14 @@
   function rehSlotCard(open) {
     if (!S.classes.length) return '';
     const st = rehSlotState(), P = +S.school.P;
-    return `<details class="card" style="margin-bottom:12px;padding:12px 16px" ${open ? 'open' : ''}><summary><b>Ortak rehberlik saati</b> <span class="small muted">· seçilen sınıfların rehberlik dersini aynı gün ve saate yerleştirip kilitler</span></summary>
-      <p class="small muted" style="margin:8px 0">Her sınıfın rehberlik dersine ayrı rehber öğretmen atanır; o saatteki kilitsiz dersler yerinden çıkarılır.</p>
+    return `<details class="card" style="margin-bottom:12px;padding:12px 16px" ${open ? 'open' : ''}><summary><b>Ortak rehberlik saati</b> <span class="small muted">· seçilen sınıfların rehberlik dersini mevcut rehber öğretmenleriyle aynı gün ve saate kilitler</span></summary>
+      <p class="small muted" style="margin:8px 0">Sınıflar ve Şubeler ile Ders Görevlendirmeleri menülerinde belirlediğiniz rehber öğretmenler <b>kesinlikle değiştirilmez</b>; seçilen saatte öğretmen kapalıysa veya çakışma varsa uyarı verilir.</p>
       <div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap">
         <label class="f" style="width:145px">Gün<select id="rsD">${GUN.slice(0, +S.school.D).map((g, i) => `<option value="${i}" ${st.d === i ? 'selected' : ''}>${g}</option>`).join('')}</select></label>
         <label class="f" style="width:120px">Ders saati<select id="rsP">${Array.from({ length: P }, (_, i) => `<option value="${i}" ${st.p === i ? 'selected' : ''}>${i + 1}. ders</option>`).join('')}</select></label>
         <div class="row" style="gap:6px;flex-wrap:wrap">${S.classes.map(c => {
-          const cd = rehCard(c), t = cd && S.teachers.find(x => x.id === cd.teacherId);
-          return `<label class="chip"><input type="checkbox" class="rsC" value="${c.id}" ${st.cls.includes(c.id) ? 'checked' : ''}> ${esc(c.name)}${t ? ` <span class="muted">· ${esc(tShort(t))}</span>` : ' <span class="muted">· yok</span>'}</label>`;
+          const cd = rehCard(c), tid = (cd && cd.teacherId) || c.rehber || '', t = S.teachers.find(x => x.id === tid);
+          return `<label class="chip"><input type="checkbox" class="rsC" value="${c.id}" ${st.cls.includes(c.id) ? 'checked' : ''}> ${esc(c.name)}${t ? ` <span class="muted">· ${esc(tShort(t))}</span>` : ' <span class="muted" style="color:var(--err)">· atanmamış</span>'}</label>`;
         }).join('')}</div>
         <button class="btn pri" data-act="rehSlot">Yerleştir ve kilitle</button>
       </div></details>`;
@@ -2224,52 +2226,134 @@
     wk.postMessage({ cmd: 'relax', m, o: { list, each: 2500, prio: S.ui.prio, fixed: fx } });
   }
 
-  /* ---------- Ortak Rehberlik Saati & Yardımcı İşlemler ---------- */
-  function rehSubjKey(grade) {
-    const ex = SK.find(k => SB(k) === EP.REHB && !k.endsWith('_SO'));
-    if (ex) return ex;
-    const k = EP.ensureSubj(S, 'Rehberlik ve Yönlendirme', grade); S.subjects[k][2] = EP.REHB; syncSubj(); return k;
+  /* ---------- Ortak Rehberlik Saati (Salt-Okunur Atama Korumalı) & Yardımcı İşlemler ---------- */
+  function toggleCellLockQuick(bid) {
+    if (!bid || !S.place[bid]) return;
+    const now = Date.now();
+    if (now - lastDblToggleAt < 250) return;
+    lastDblToggleAt = now;
+    lastCellClick = null;
+    snap();
+    S.place[bid].lock = !S.place[bid].lock;
+    const isLocked = S.place[bid].lock;
+    const cd = EP.cardMap(S).get(bid.split(':')[0]);
+    sel = '';
+    closePop();
+    commit();
+    toast(`${cd ? cName(cd.classId) + ' ' + SS(cd.subj) : 'Ders'} ${isLocked ? 'kilitlendi' : 'kilidi açıldı'}.`);
   }
 
-  function applyRehSlot(d, p, clsIds) {
-    const P = +S.school.P, key = d + '-' + p, res = { ok: [], fail: [], moved: 0, made: 0, tch: 0 };
+  function checkRehSlot(d, p, clsIds) {
+    const P = +S.school.P;
     const cls = clsIds.map(id => S.classes.find(c => c.id === id)).filter(Boolean);
-    const used = new Set(), L = EP.loads(S);
+    const o = EP.occ(S);
+    const usedTeachers = new Map();
+    const valid = [];
+    const fail = [];
+
     for (const c of cls) {
-      let cd = rehCard(c); if (!cd) { cd = EP.newCard(S, c.id, rehSubjKey(c.grade), 1, 'zorunlu'); res.made++; }
-      let tid = [c.rehber, cd.teacherId].find(t => t && !used.has(t) && S.teachers.some(x => x.id === t) && (S.teachers.find(x => x.id === t).av || {})[key] !== 1);
-      if (!tid) {
-        const inCls = {}; for (const x of S.cards) if (x.classId === c.id && x.teacherId && SB(x.subj) !== EP.REHB) inCls[x.teacherId] = (inCls[x.teacherId] || 0) + (+x.hours || 0);
-        const cand = S.teachers.filter(t => !used.has(t.id) && (t.av || {})[key] !== 1).sort((a, b) => (inCls[b.id] || 0) - (inCls[a.id] || 0) || (L[a.id] || 0) - (L[b.id] || 0));
-        tid = cand[0] && cand[0].id;
+      const cd = rehCard(c);
+      if (!cd) {
+        fail.push(`${c.name}: Ders Görevlendirmeleri menüsünde rehberlik dersi tanımlı değil.`);
+        continue;
       }
-      if (!tid) { res.fail.push(c.name + ': uygun öğretmen yok'); continue; }
-      used.add(tid); if (cd.teacherId !== tid) res.tch++; cd.teacherId = tid; c.rehber = tid; c._rc = cd;
-    }
-    const mine = new Set(cls.filter(c => c._rc).map(c => c._rc.id + ':0'));
-    const o = EP.occ(S), lockedBlock = [];
-    for (const c of cls) {
-      const cd = c._rc; if (!cd) continue;
-      if ((c.closed || []).includes(key)) { res.fail.push(c.name + ': sınıf kapalı'); delete c._rc; continue; }
+      const cardTid = cd.teacherId && S.teachers.some(x => x.id === cd.teacherId) ? cd.teacherId : '';
+      const clsTid = c.rehber && S.teachers.some(x => x.id === c.rehber) ? c.rehber : '';
+      if (cardTid && clsTid && cardTid !== clsTid) {
+        const t1 = S.teachers.find(x => x.id === cardTid), t2 = S.teachers.find(x => x.id === clsTid);
+        fail.push(`${c.name}: Ders Görevlendirmeleri (${t1.name}) ile Sınıflar ve Şubeler (${t2.name}) rehber öğretmeni uyuşmuyor; önce eşitleyin.`);
+        continue;
+      }
+      if (!cardTid) {
+        if (clsTid) {
+          const t2 = S.teachers.find(x => x.id === clsTid);
+          fail.push(`${c.name}: Sınıflar menüsünde rehber öğretmen (${t2.name}) seçili ancak Ders Görevlendirmeleri'ndeki rehberlik dersine atanmamış.`);
+        } else {
+          fail.push(`${c.name}: Rehber öğretmen atanmamış. Önce Sınıflar ve Şubeler / Ders Görevlendirmeleri menüsünden atayın.`);
+        }
+        continue;
+      }
+      const t = S.teachers.find(x => x.id === cardTid);
+      if (usedTeachers.has(t.id)) {
+        fail.push(`${c.name} (${t.name}): Aynı öğretmen aynı saatte iki sınıfta (${usedTeachers.get(t.id)} ve ${c.name}) rehberlik dersine giremez.`);
+        continue;
+      }
       const len = EP.parsePat(cd.pattern, cd.hours)[0] || 1;
+      if (p + len > P) {
+        fail.push(`${c.name} (${t.name}): ${p + 1}. ders saatine ${len} saatlik blok sığmıyor.`);
+        continue;
+      }
+
+      let slotErr = '';
       for (let k = 0; k < len; k++) {
         const kk = d + '-' + (p + k);
-        for (const cell of [(o.cG[c.id] || {})[kk], (o.tG[cd.teacherId] || {})[kk]]) {
-          if (!cell || mine.has(cell.id)) continue;
-          if (cell.lock) { lockedBlock.push(c); res.fail.push(c.name + ': kilitli ders çakışması'); break; }
+        if ((c.closed || []).includes(kk)) {
+          slotErr = `${c.name}: ${GUN[d]} ${p + k + 1}. ders saati sınıfa kapalı.`;
+          break;
+        }
+        if ((t.av || {})[kk] === 1) {
+          slotErr = `${c.name} (${t.name}): Öğretmen ${GUN[d]} ${p + k + 1}. ders saatinde kapalı / müsait değil.`;
+          break;
+        }
+        const ownBlockId = cd.id + ':0';
+        for (const cell of [(o.cG[c.id] || {})[kk], (o.tG[t.id] || {})[kk]]) {
+          if (!cell || cell.id === ownBlockId) continue;
+          if (cell.lock) {
+            slotErr = `${c.name} (${t.name}): ${GUN[d]} ${p + k + 1}. ders saatinde kilitli ders çakışması var (${cName(cell.card.classId)} ${SS(cell.card.subj)}).`;
+            break;
+          }
+        }
+        if (slotErr) break;
+      }
+      if (slotErr) {
+        fail.push(slotErr);
+        continue;
+      }
+
+      usedTeachers.set(t.id, c.name);
+      valid.push({ c, cd, t, len });
+    }
+    return { valid, fail };
+  }
+
+  function applyRehSlot(d, p, validList) {
+    const res = { ok: [], moved: 0 };
+    const mine = new Set(validList.map(v => v.cd.id + ':0'));
+    const o = EP.occ(S);
+    for (const v of validList) {
+      for (let k = 0; k < v.len; k++) {
+        const kk = d + '-' + (p + k);
+        for (const cell of [(o.cG[v.c.id] || {})[kk], (o.tG[v.t.id] || {})[kk]]) {
+          if (!cell || mine.has(cell.id) || cell.lock) continue;
           if (S.place[cell.id]) { delete S.place[cell.id]; res.moved++; }
         }
-        if (lockedBlock.includes(c)) break;
       }
     }
-    for (const c of cls) {
-      const cd = c._rc; delete c._rc; if (!cd || lockedBlock.includes(c)) continue;
-      for (const k in S.place) if (k.split(':')[0] === cd.id) delete S.place[k];
-      S.place[cd.id + ':0'] = { d, p, lock: true }; res.ok.push(c);
+    for (const v of validList) {
+      for (const k in S.place) if (k.split(':')[0] === v.cd.id) delete S.place[k];
+      S.place[v.cd.id + ':0'] = { d, p, lock: true };
+      res.ok.push(v.c);
     }
     const { bad } = EP.placedCore(S);
     for (const b of bad) { delete S.place[b]; res.moved++; }
     return res;
+  }
+
+  function showRehWarningModal(title, items, okLabel) {
+    return new Promise(res => {
+      const M = $('#modalRoot');
+      M.innerHTML = `<div class="modal"><div class="box" style="width:min(580px,100%)">
+        <h2>${esc(title)}</h2>
+        <p class="small muted">Sınıflar ve Şubeler ile Ders Görevlendirmeleri menülerindeki rehber öğretmen atamalarınız <b>kesinlikle değiştirilmez</b>. Aşağıdaki koşullar sağlanmadı:</p>
+        <ul style="margin:8px 0 12px 18px;line-height:1.55">${items.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
+        <div class="row" style="justify-content:flex-end">
+          <button class="btn" id="mRehNo">${okLabel ? 'Vazgeç' : 'Tamam'}</button>
+          ${okLabel ? `<button class="btn pri" id="mRehOk">${esc(okLabel)}</button>` : ''}
+        </div>
+      </div></div>`;
+      $('#mRehNo').addEventListener('click', () => { M.innerHTML = ''; res(false); });
+      if (okLabel) $('#mRehOk').addEventListener('click', () => { M.innerHTML = ''; res(true); });
+    });
   }
 
   function placeHere(cardId) {
@@ -2493,9 +2577,15 @@
         const key = a.dataset.key, tid = a.dataset.id || '', ent = a.dataset.ent, kind = a.dataset.kind;
         if (tid && (bulkMode || e.ctrlKey || e.metaKey)) {
           if (bulkSel.has(tid)) bulkSel.delete(tid); else bulkSel.add(tid);
-          sel = ''; closePop(); render();
+          lastCellClick = null; sel = ''; closePop(); render();
           break;
         }
+        const now = Date.now();
+        if (tid && S.place[tid] && lastCellClick && lastCellClick.id === tid && lastCellClick.ent === ent && (now - lastCellClick.at) <= 450) {
+          toggleCellLockQuick(tid);
+          break;
+        }
+        lastCellClick = tid ? { id: tid, ent, key, at: now } : null;
         if (sel && tid !== sel && moveTo(sel, key, tid, ent)) { sel = ''; closePop(); commit(); toast('Ders taşındı.'); break; }
         if (tid && tid === sel && pop && pop.id === tid) { sel = ''; closePop(); render(); break; }
         sel = tid; pop = { key, ent, kind, id: tid }; render();
@@ -2602,8 +2692,24 @@
       case 'rehSlot': {
         const d = +$('#rsD').value, p2 = +$('#rsP').value, ids = [...document.querySelectorAll('.rsC:checked')].map(x => x.value);
         if (!ids.length) { toast('En az bir sınıf seçin.'); break; }
-        snap(); S.rehSlot = { d, p: p2, cls: ids }; const r = applyRehSlot(d, p2, ids); sel = ''; closePop(); commit();
-        toast(`${r.ok.length} sınıfın rehberlik dersi ${GUN[d]} ${p2 + 1}. saate kilitlendi.${r.fail.length ? ' Hata: ' + r.fail[0] : ''}`);
+        const chk = checkRehSlot(d, p2, ids);
+        if (chk.fail.length) {
+          if (!chk.valid.length) {
+            await showRehWarningModal('Ortak rehberlik saati yerleştirilemedi', chk.fail, null);
+            break;
+          }
+          const okGo = await showRehWarningModal(
+            `Bazı sınıflar ${GUN[d]} ${p2 + 1}. derse yerleştirilemiyor`,
+            chk.fail,
+            `Yalnızca uygun ${chk.valid.length} sınıfı yerleştir ve kilitle`
+          );
+          if (!okGo) break;
+        }
+        snap();
+        S.rehSlot = { d, p: p2, cls: ids };
+        const r = applyRehSlot(d, p2, chk.valid);
+        sel = ''; closePop(); commit();
+        toast(`${r.ok.length} sınıfın rehberlik dersi mevcut rehber öğretmenleriyle ${GUN[d]} ${p2 + 1}. saate kilitlendi.`);
       } break;
       case 'rehAuto': { snap(); const n = EP.rehberAuto(S); const { bad } = EP.placedCore(S); bad.forEach(b => delete S.place[b]); commit(); toast(`${n} şubenin rehber öğretmeni güncellendi.`); } break;
       case 'pick': sel = sel === id ? '' : id; closePop(); render(); break;
@@ -3255,21 +3361,14 @@
     document.querySelectorAll('.dtgt,.dswp,.drop-over,.dragging').forEach(x => x.classList.remove('dtgt', 'dswp', 'drop-over', 'dragging'));
   });
 
-  /* Çift tık ile anında ders kilitleme / kilit açma */
+  /* Çift tık ile anında ders kilitleme / kilit açma (yedek dinleyici) */
   document.addEventListener('dblclick', e => {
     const td = e.target.closest && e.target.closest('td[data-act="cell"][data-id]');
     if (!td || running) return;
     const bid = td.dataset.id;
     if (!bid || !S.place[bid]) return;
     e.preventDefault();
-    snap();
-    S.place[bid].lock = !S.place[bid].lock;
-    const isLocked = S.place[bid].lock;
-    const cd = EP.cardMap(S).get(bid.split(':')[0]);
-    sel = '';
-    closePop();
-    commit();
-    toast(`${cd ? cName(cd.classId) + ' ' + SS(cd.subj) : 'Ders'} ${isLocked ? 'kilitlendi' : 'kilidi açıldı'}.`);
+    toggleCellLockQuick(bid);
   });
 
   document.addEventListener('contextmenu', e => {

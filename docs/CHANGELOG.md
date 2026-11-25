@@ -1,5 +1,11 @@
 # DersMatrix Ultimate (by EvrakPlus) — Değişiklik Geçmişi (CHANGELOG)
 
+## [2.2.2] - 2026-11-25
+
+### Düzeltmeler
+- **Ortak Rehberlik Saati Atama Koruması**: `Ortak rehberlik saati` artık `Sınıflar ve Şubeler` ile `Ders Görevlendirmeleri` menülerindeki rehber öğretmen atamalarını kesinlikle değiştirmez; öğretmen kapalıysa, atanmamışsa, iki menüde farklıysa veya kilitli çakışma varsa ayrıntılı uyarı penceresi gösterir.
+- **Çift Tıkla Ders Kilitleme / Kilit Açma Düzeltmesi**: Tablo yeniden çizimi (`render()`) nedeniyle yerel `dblclick` olayının yutulması giderildi; tüm program görünümlerinde herhangi bir dolu derse çift tıklamak kilidi anında açıp kapatır.
+
 ## [2.2.1] - 2026-11-25
 
 ### İyileştirmeler
