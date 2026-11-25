@@ -152,29 +152,67 @@ function registerIpcHandlers() {
   }));
 }
 
-if (app && typeof app.whenReady === 'function') {
-  app.whenReady().then(() => {
-    const dataDir = path.join(app.getPath('userData'), 'data');
-    store = new SqliteProjectStore(path.join(dataDir, 'evrakplus.sqlite'));
-    const embedded = resolveEmbeddedPaths({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath });
-    engine = new MultiSolverEngine({
-      ortools: { pythonBin: embedded.pythonBin },
-      scip: { pythonBin: embedded.pythonBin },
-      highs: { pythonBin: embedded.pythonBin },
-      timefold: { javaBin: embedded.javaBin, jarPath: embedded.timefoldJar },
-      choco: { javaBin: embedded.javaBin, jarPath: embedded.chocoJar },
-      minizinc: { minizincBin: embedded.minizincBin, backendSolver: 'gecode' }
-    });
-    registerIpcHandlers();
-    createWindow();
-  });
-
-  app.on('before-quit', async () => {
-    if (engine) await engine.cancelAll();
+let isQuitting = false;
+async function cleanShutdownAndExit() {
+  if (isQuitting) return;
+  isQuitting = true;
+  try {
+    if (engine) {
+      await Promise.race([
+        engine.cancelAll(),
+        new Promise(resolve => setTimeout(resolve, 1500))
+      ]);
+    }
+  } catch {
+    // ignore cleanup errors on exit
+  }
+  try {
     if (store) store.close();
-  });
+  } catch {
+    // ignore store close errors
+  }
+  app.exit(0);
+}
 
-  app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') app.quit();
-  });
+if (app && typeof app.whenReady === 'function') {
+  const gotLock = app.requestSingleInstanceLock();
+  if (!gotLock) {
+    app.quit();
+  } else {
+    app.on('second-instance', () => {
+      if (mainWindow) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.focus();
+      }
+    });
+
+    app.whenReady().then(() => {
+      const dataDir = path.join(app.getPath('userData'), 'data');
+      store = new SqliteProjectStore(path.join(dataDir, 'evrakplus.sqlite'));
+      const embedded = resolveEmbeddedPaths({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath });
+      engine = new MultiSolverEngine({
+        ortools: { pythonBin: embedded.pythonBin },
+        scip: { pythonBin: embedded.pythonBin },
+        highs: { pythonBin: embedded.pythonBin },
+        timefold: { javaBin: embedded.javaBin, jarPath: embedded.timefoldJar },
+        choco: { javaBin: embedded.javaBin, jarPath: embedded.chocoJar },
+        minizinc: { minizincBin: embedded.minizincBin, backendSolver: 'gecode' }
+      });
+      registerIpcHandlers();
+      createWindow();
+    });
+
+    app.on('before-quit', ev => {
+      if (!isQuitting) {
+        ev.preventDefault();
+        cleanShutdownAndExit();
+      }
+    });
+
+    app.on('window-all-closed', () => {
+      if (process.platform !== 'darwin') {
+        cleanShutdownAndExit();
+      }
+    });
+  }
 }
