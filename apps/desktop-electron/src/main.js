@@ -4,12 +4,13 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { app, BrowserWindow, ipcMain, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron';
 import { SqliteProjectStore } from './sqlite-store.js';
 import { resolveEmbeddedPaths } from './engine-paths.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const APP_VERSION = '2.0.0';
+export const APP_VERSION = '2.1.0';
+export const APP_NAME = 'DersMatrix Ultimate';
 
 async function loadMultiSolver() {
   const packagedUrl = new URL('../packages/multi-solver/src/index.js', import.meta.url);
@@ -120,7 +121,8 @@ async function openEvrakPlusLoginWindow() {
       parent: mainWindow || undefined,
       modal: false,
       autoHideMenuBar: true,
-      title: 'EvrakPlus Üyelik Girişi · evrakplus.com',
+      icon: resolveAppIcon(),
+      title: 'EvrakPlus Üyelik Girişi · DersMatrix Ultimate',
       webPreferences: {
         partition: AUTH_PARTITION,
         contextIsolation: true,
@@ -187,7 +189,7 @@ async function checkLatestRelease() {
     const res = await fetch(RELEASE_API_URL, {
       headers: {
         'Accept': 'application/vnd.github+json',
-        'User-Agent': `EvrakPlus-Multi-Plus/${APP_VERSION}`
+        'User-Agent': `DersMatrix-Ultimate/${APP_VERSION}`
       }
     });
     if (!res.ok) {
@@ -204,7 +206,7 @@ async function checkLatestRelease() {
       currentVersion: APP_VERSION,
       latestVersion,
       updateAvailable,
-      releaseName: rel.name || `EvrakPlus Multi Plus v${latestVersion}`,
+      releaseName: rel.name || `${APP_NAME} v${latestVersion}`,
       publishedAt: rel.published_at || '',
       assetName: setupAsset ? setupAsset.name : '',
       assetSize: setupAsset ? setupAsset.size : 0,
@@ -228,12 +230,12 @@ async function downloadAndInstallRelease(reqInfo) {
     throw new Error('İndirilecek geçerli güncelleme paketi bulunamadı.');
   }
 
-  const targetName = (info.assetName || `EvrakPlus-Update-${info.latestVersion}-Setup.exe`).replace(/[^a-zA-Z0-9._-]/g, '');
+  const targetName = (info.assetName || `DersMatrix-Ultimate-${info.latestVersion}-Setup.exe`).replace(/[^a-zA-Z0-9._-]/g, '');
   const destPath = path.join(os.tmpdir(), targetName);
 
   notifyUpdater({ type: 'progress', percent: 1, message: 'Güncelleme paketi indiriliyor…' });
   const resp = await fetch(info.downloadUrl, {
-    headers: { 'User-Agent': `EvrakPlus-Multi-Plus/${APP_VERSION}` }
+    headers: { 'User-Agent': `DersMatrix-Ultimate/${APP_VERSION}` }
   });
   if (!resp.ok || !resp.body) {
     throw new Error(`Güncelleme indirilemedi (HTTP ${resp.status}).`);
@@ -271,7 +273,7 @@ async function downloadAndInstallRelease(reqInfo) {
   const actualSha = hash.digest('hex').toLowerCase();
   if (info.sha256Url && /^https:\/\//i.test(info.sha256Url)) {
     notifyUpdater({ type: 'verifying', percent: 99, message: 'SHA-256 bütünlük doğrulaması yapılıyor…' });
-    const sumResp = await fetch(info.sha256Url, { headers: { 'User-Agent': `EvrakPlus-Multi-Plus/${APP_VERSION}` } });
+    const sumResp = await fetch(info.sha256Url, { headers: { 'User-Agent': `DersMatrix-Ultimate/${APP_VERSION}` } });
     if (sumResp.ok) {
       const txt = await sumResp.text();
       const line = txt.split(/\r?\n/).find(l => l.trim().endsWith(info.assetName));
@@ -292,18 +294,111 @@ async function downloadAndInstallRelease(reqInfo) {
   return { launched: true, installerPath: destPath, sha256: actualSha };
 }
 
+/* ---------- Gerçek PDF Üretimi (Chromium printToPDF) ve Doğrudan Yazdırma ---------- */
+async function renderHiddenHtmlWindow(html, landscape) {
+  const tmpHtml = path.join(os.tmpdir(), `dersmatrix-print-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.html`);
+  fs.writeFileSync(tmpHtml, html, 'utf8');
+  const win = new BrowserWindow({
+    show: false,
+    width: landscape ? 1200 : 860,
+    height: 920,
+    webPreferences: {
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      webSecurity: true,
+      javascript: false
+    }
+  });
+  await win.loadFile(tmpHtml);
+  return { win, tmpHtml };
+}
+
+async function exportHtmlToPdf(opts) {
+  if (!opts || typeof opts.html !== 'string' || !opts.html.trim()) {
+    throw new Error('PDF içeriği boş.');
+  }
+  const safeName = String(opts.defaultFilename || 'DersMatrix-Program.pdf')
+    .replace(/[\\/:*?"<>|]+/g, ' ')
+    .trim()
+    .replace(/(?:\.html?|\.pdf)+$/i, '') + '.pdf';
+
+  const saveRes = await dialog.showSaveDialog(mainWindow || undefined, {
+    title: 'PDF Belgesi Olarak Kaydet',
+    defaultPath: path.join(app.getPath('documents'), safeName),
+    filters: [{ name: 'PDF Belgesi (*.pdf)', extensions: ['pdf'] }]
+  });
+  if (saveRes.canceled || !saveRes.filePath) {
+    return { ok: false, canceled: true };
+  }
+
+  let win = null;
+  let tmpHtml = '';
+  try {
+    const rendered = await renderHiddenHtmlWindow(opts.html, Boolean(opts.landscape));
+    win = rendered.win;
+    tmpHtml = rendered.tmpHtml;
+    const pdfBuf = await win.webContents.printToPDF({
+      printBackground: true,
+      preferCSSPageSize: true,
+      landscape: Boolean(opts.landscape),
+      pageSize: opts.paperSize === 'A3' ? 'A3' : 'A4',
+      margins: { top: 0.25, bottom: 0.25, left: 0.25, right: 0.25 }
+    });
+    fs.writeFileSync(saveRes.filePath, pdfBuf);
+    try { await shell.openPath(saveRes.filePath); } catch {}
+    return { ok: true, canceled: false, filePath: saveRes.filePath, bytes: pdfBuf.length };
+  } finally {
+    try { if (win && !win.isDestroyed()) win.destroy(); } catch {}
+    try { if (tmpHtml && fs.existsSync(tmpHtml)) fs.unlinkSync(tmpHtml); } catch {}
+  }
+}
+
+async function printHtmlDirect(opts) {
+  if (!opts || typeof opts.html !== 'string' || !opts.html.trim()) {
+    throw new Error('Yazdırılacak içerik boş.');
+  }
+  let win = null;
+  let tmpHtml = '';
+  try {
+    const rendered = await renderHiddenHtmlWindow(opts.html, Boolean(opts.landscape));
+    win = rendered.win;
+    tmpHtml = rendered.tmpHtml;
+    const ok = await new Promise(resolve => {
+      win.webContents.print({
+        silent: false,
+        printBackground: true,
+        landscape: Boolean(opts.landscape)
+      }, (success) => resolve(Boolean(success)));
+    });
+    return { ok };
+  } finally {
+    try { if (win && !win.isDestroyed()) win.destroy(); } catch {}
+    try { if (tmpHtml && fs.existsSync(tmpHtml)) fs.unlinkSync(tmpHtml); } catch {}
+  }
+}
+
+function resolveAppIcon() {
+  const candidates = app.isPackaged
+    ? [path.join(process.resourcesPath, 'icon.ico'), path.join(process.resourcesPath, 'icon.png')]
+    : [path.resolve(__dirname, '..', 'build', 'icon.ico'), path.resolve(__dirname, '..', 'build', 'icon.png')];
+  return candidates.find(p => fs.existsSync(p));
+}
+
 /* ---------- Pencere ve IPC ---------- */
 function createWindow() {
   const uiIndex = app.isPackaged
     ? path.join(process.resourcesPath, 'ui-shared', 'public', 'index.html')
     : path.resolve(__dirname, '..', '..', '..', 'packages', 'ui-shared', 'public', 'index.html');
+  const iconPath = resolveAppIcon();
 
   mainWindow = new BrowserWindow({
     width: 1380,
     height: 880,
     minWidth: 960,
     minHeight: 640,
-    title: `EvrakPlus Ders Dağıtım Multi Plus · v${APP_VERSION}`,
+    icon: iconPath,
+    title: `${APP_NAME} · v${APP_VERSION}`,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: SECURITY_CONFIG.contextIsolation,
@@ -407,6 +502,8 @@ function registerIpcHandlers() {
 
   ipcMain.handle('updater:check', () => checkLatestRelease());
   ipcMain.handle('updater:downloadAndInstall', (_ev, info) => downloadAndInstallRelease(info));
+  ipcMain.handle('export:pdf', (_ev, opts) => exportHtmlToPdf(opts));
+  ipcMain.handle('export:print', (_ev, opts) => printHtmlDirect(opts));
 }
 
 async function cleanShutdownAndExit() {

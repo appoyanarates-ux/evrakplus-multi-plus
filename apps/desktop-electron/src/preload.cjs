@@ -6,7 +6,8 @@ const { contextBridge, ipcRenderer } = require('electron');
  */
 contextBridge.exposeInMainWorld('evrakplusBridge', Object.freeze({
   platform: 'windows-electron',
-  appVersion: '2.0.0',
+  appName: 'DersMatrix Ultimate',
+  appVersion: '2.1.0',
   listProjects: () => ipcRenderer.invoke('project:list'),
   loadProject: id => ipcRenderer.invoke('project:load', id),
   saveProject: project => ipcRenderer.invoke('project:save', project),
@@ -26,6 +27,8 @@ contextBridge.exposeInMainWorld('evrakplusBridge', Object.freeze({
   getSystemInfo: () => ipcRenderer.invoke('system:info'),
   checkUpdate: () => ipcRenderer.invoke('updater:check'),
   downloadAndInstallUpdate: info => ipcRenderer.invoke('updater:downloadAndInstall', info),
+  exportPdf: opts => ipcRenderer.invoke('export:pdf', opts),
+  printHtml: opts => ipcRenderer.invoke('export:print', opts),
   onUpdaterEvent: handler => {
     const listener = (_event, payload) => handler(payload);
     ipcRenderer.on('updater:event', listener);

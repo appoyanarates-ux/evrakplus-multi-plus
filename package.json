@@ -1,8 +1,8 @@
 {
-  "name": "evrakplus-ders-dagitim-multi-plus",
-  "version": "2.0.0",
+  "name": "dersmatrix-ultimate",
+  "version": "2.1.0",
   "private": true,
-  "description": "EvrakPlus Ders Dağıtım Multi Plus — MEB uyumlu çok motorlu haftalık ders dağıtım sistemi",
+  "description": "DersMatrix Ultimate by EvrakPlus — MEB uyumlu çok motorlu haftalık ders dağıtım sistemi",
   "type": "module",
   "workspaces": [
     "packages/*",

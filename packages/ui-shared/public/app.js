@@ -171,10 +171,62 @@
     $('#mX').addEventListener('click', () => { M.innerHTML = ''; });
   }
 
-  const APP_VER = (bridge && bridge.appVersion) || '2.0.0';
+  const APP_VER = (bridge && bridge.appVersion) || '2.1.0';
   let updateInfo = null;
   let updateProgress = null;
   const isMember = () => Boolean(authUser && (authUser.loggedIn || authUser.entitlementValid));
+
+  function browserPrintHtml(html) {
+    const ifr = document.createElement('iframe');
+    ifr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+    document.body.appendChild(ifr);
+    const cleanup = () => { setTimeout(() => { try { ifr.remove(); } catch (_) {} }, 1500); };
+    ifr.onload = () => {
+      try {
+        ifr.contentWindow.focus();
+        ifr.contentWindow.print();
+      } catch (_) {
+        const w = window.open('', '_blank');
+        if (w) { w.document.open(); w.document.write(html); w.document.close(); setTimeout(() => w.print(), 250); }
+      }
+      cleanup();
+    };
+    ifr.srcdoc = html;
+  }
+
+  async function exportReportPdf(html, title, landscape) {
+    const safeTitle = String(title || 'DersMatrix-Program').replace(/[\\/:*?"<>|]+/g, '').trim() || 'DersMatrix-Program';
+    if (bridge && typeof bridge.exportPdf === 'function') {
+      toast('PDF dosyası hazırlanıyor…');
+      try {
+        const res = await bridge.exportPdf({
+          html,
+          defaultFilename: safeTitle + '.pdf',
+          landscape: Boolean(landscape),
+          paperSize: EP.rep(S).paper === 'A3' ? 'A3' : 'A4'
+        });
+        if (res && res.ok) toast('PDF belgesi kaydedildi ve açıldı.');
+        else if (res && !res.canceled) toast('PDF oluşturulamadı.');
+      } catch (err) {
+        toast('PDF hatası: ' + (err && err.message ? err.message : String(err)));
+      }
+      return;
+    }
+    browserPrintHtml(html);
+    toast('Yazdırma / PDF kaydetme penceresi açıldı (Hedef: PDF olarak kaydet).');
+  }
+
+  async function printReportNow(html, landscape) {
+    if (bridge && typeof bridge.printHtml === 'function') {
+      try {
+        await bridge.printHtml({ html, landscape: Boolean(landscape) });
+      } catch (err) {
+        toast('Yazdırma hatası: ' + (err && err.message ? err.message : String(err)));
+      }
+      return;
+    }
+    browserPrintHtml(html);
+  }
 
   function renderUpdateBanner() {
     const b = $('#banner');
@@ -375,9 +427,10 @@
     const dutyAssigned = S.teachers.filter(t => !EP.isDutyExempt(S, t) && EP.dutyOf(t).d >= 0).length;
     const dutyExemptCount = S.teachers.filter(t => EP.isDutyExempt(S, t)).length;
     const clubAssigned = S.teachers.filter(t => Boolean(t.kulup)).length;
-    return H('Ana Panel', 'Okulunuzun haftalık ders dağıtım özeti, PASS 0 ön kontrol durumu ve hızlı işlemler.',
+    return H('Ana Panel', 'DersMatrix Ultimate — Okulunuzun haftalık ders dağıtım özeti, PASS 0 ön kontrol durumu ve hızlı işlemler.',
       `<button class="btn pri" data-step="auto_schedule">Dağıtıma Git</button><button class="btn" data-act="demo">Örnek Okul</button><button class="btn" data-act="demoX">Çakışmalı Örnek</button>`) +
-      `<div class="kpis">
+      `<div class="hero-banner"><img src="./assets/dersmatrix-banner.jpg" alt="DersMatrix Ultimate · Profesyonel Haftalık Ders Dağıtım Sistemi by EvrakPlus"></div>
+      <div class="kpis">
         <div class="kpi"><small>Şube / Sınıf</small><b>${S.classes.length}</b><span>${(S.rooms || []).length} derslik · ${(S.buildings || []).length} bina</span></div>
         <div class="kpi"><small>Öğretmen</small><b>${S.teachers.length}</b><span>${totHrs} haftalık ders saati</span></div>
         <div class="kpi"><small>Yerleşen Blok</small><b>${pl} / ${tot}</b><span>${o.un.length ? o.un.length + ' yerleşmeyen' : 'Program tam'}</span></div>
@@ -429,9 +482,42 @@
       <button class="btn sm" data-act="myAdd" style="margin-top:8px">Müdür yardımcısı ekle</button></div>`;
   }
 
+  function roomsContent() {
+    const blds = S.buildings || [], rms = S.rooms || [], opR = S.ui.openRoom || '';
+    return `<div class="row" style="justify-content:flex-end;margin-bottom:12px">
+        <button class="btn pri" data-act="addRoom">Derslik / Lab ekle</button>
+        <button class="btn" data-act="addBld">Bina ekle</button>
+      </div>
+      <div class="card scroll" style="margin-bottom:14px"><h2>Binalar ve Bina Geçiş Süreleri</h2>
+        <p class="small muted" style="margin-top:4px">Çoklu bina geçiş sürelerini (ders boşluğu) buradan belirleyebilirsiniz.</p>
+        <table class="tbl" style="margin-top:8px"><thead><tr><th>Bina Adı</th><th>Kod</th>${blds.map(b => `<th class="n">→ ${esc(b.code || b.name)} (ders boşluğu)</th>`).join('')}<th></th></tr></thead><tbody>
+        ${blds.map(b => `<tr>
+          <td><input data-bld="${b.id}" data-f="name" value="${esc(b.name)}" style="max-width:200px"></td>
+          <td><input data-bld="${b.id}" data-f="code" value="${esc(b.code || '')}" style="width:70px"></td>
+          ${blds.map(b2 => b2.id === b.id ? '<td class="n muted">0</td>' : `<td class="n"><input type="number" min="0" max="4" data-btr="${b.id}|${b2.id}" value="${(b.transitionPeriods || {})[b2.id] || 0}" style="width:62px"></td>`).join('')}
+          <td style="text-align:right"><button class="btn sm ghost" data-act="delBld" data-id="${b.id}" ${blds.length <= 1 ? 'disabled' : ''}>Sil</button></td>
+        </tr>`).join('')}</tbody></table></div>
+      <div class="card scroll"><h2>Derslikler, Laboratuvarlar ve Atölyeler (${rms.length})</h2>
+        <p class="small muted" style="margin-top:4px">Özel laboratuvar, spor salonu, atölye kapasiteleri ve kapalı saatlerini yönetin.</p>
+        <table class="tbl" style="margin-top:8px"><thead><tr><th>Derslik Adı</th><th>Tür</th><th>Bina</th><th class="n">Kapasite</th><th></th></tr></thead><tbody>
+        ${rms.map(r => `<tr>
+          <td><input data-room="${r.id}" data-f="name" value="${esc(r.name)}"></td>
+          <td><select data-room="${r.id}" data-f="type">${EP.ROOM_TYPES.map(([k, l]) => `<option value="${k}" ${r.type === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
+          <td><select data-room="${r.id}" data-f="buildingId">${blds.map(b => `<option value="${b.id}" ${r.buildingId === b.id ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}</select></td>
+          <td class="n"><input type="number" min="1" max="300" data-room="${r.id}" data-f="capacity" value="${r.capacity || 30}" style="width:74px"></td>
+          <td style="text-align:right;white-space:nowrap"><button class="btn sm ghost" data-act="roomSlots" data-id="${r.id}">${opR === r.id ? 'Kapat' : 'Saatler'}</button> <button class="btn sm ghost" data-act="delRoom" data-id="${r.id}">Sil</button></td>
+        </tr>${opR === r.id ? `<tr><td colspan="5">${matrix('room', r)}</td></tr>` : ''}`).join('')}</tbody></table></div>`;
+  }
+
   function vOkul() {
-    const s = S.school, tm = EP.times(S), T = EP.typeOf(S);
-    return H('Okul ve zaman çizelgesi', 'Okul türünü seçin; zorunlu dersler, seçmeli havuzu ve haftalık saat bu türün çizelgesinden gelir. Taslak şablonlar düzenlenebilir olup resmi MEB onayı yerine kurum çizelgenizi esas alınız.') +
+    const s = S.school, tm = EP.times(S), T = EP.typeOf(S), stab = S.ui.stab === 'rooms' ? 'rooms' : 'genel';
+    const head = H('Okul Ayarları', 'Kurum bilgilerini, zil saatlerini, okul yönetimini ve derslik/bina ayarlarını tek merkezden yönetin.');
+    const tabs = `<div class="tabs" style="margin-bottom:14px;display:inline-flex">
+      <button data-act="stab" data-v="genel" class="${stab === 'genel' ? 'on' : ''}">Genel Bilgiler, Zil ve Yönetim</button>
+      <button data-act="stab" data-v="rooms" class="${stab === 'rooms' ? 'on' : ''}">Derslikler ve Binalar (${(S.rooms || []).length} derslik · ${(S.buildings || []).length} bina)</button>
+    </div>`;
+    if (stab === 'rooms') return head + tabs + roomsContent();
+    return head + tabs +
       `<div class="grid2"><div class="card"><h2>Kurum ve okul türü</h2><div class="fields" style="margin-top:12px">
         <label class="f">Okul adı<input data-k="school.name" value="${esc(s.name)}"></label>
         <label class="f">Eğitim yılı<input data-k="school.year" value="${esc(s.year)}"></label>
@@ -554,7 +640,11 @@
       const bm = SB(b.subj) === t.branch ? 0 : (t.extra || []).includes(b.subj) ? 1 : 2;
       return am - bm || cName(a.classId).localeCompare(cName(b.classId), 'tr');
     });
-    const subjOpts = [...SK].sort((a, b) => SN(a).localeCompare(SN(b), 'tr')).map(k => `<option value="${k}" ${SB(k) === t.branch ? 'data-own="1"' : ''}>${esc(SN(k))} · ${esc(SB(k))}</option>`).join('');
+    const firstClsId = S.classes[0] ? S.classes[0].id : '';
+    const subjOpts = [...SK].sort((a, b) => SN(a).localeCompare(SN(b), 'tr')).map(k => {
+      const dup = firstClsId && EP.findClassSubjCard(S, firstClsId, k);
+      return `<option value="${k}" ${dup ? 'disabled' : ''}>${esc(SN(k))} · ${esc(SB(k))}${dup ? ' (Sınıfta zaten var)' : ''}</option>`;
+    }).join('');
 
     return `<div style="margin-top:${o.standalone ? '0' : '18px'}">
       <div class="load-meter">
@@ -595,7 +685,7 @@
           <h3>Bu öğretmene yeni ders ekle</h3>
           <p class="small muted" style="margin:3px 0 10px">Seçtiğiniz sınıfa yeni ders kartı oluşturur ve doğrudan bu öğretmene atar.</p>
           <div class="fields">
-            <label class="f">Sınıf<select id="tqaC_${t.id}">${S.classes.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></label>
+            <label class="f">Sınıf<select id="tqaC_${t.id}" data-tqac="${t.id}">${S.classes.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></label>
             <label class="f">Ders<select id="tqaS_${t.id}">${subjOpts}</select></label>
             <label class="f">Haftalık saat<input type="number" id="tqaH_${t.id}" min="1" max="12" value="2"></label>
             <label class="f">Tür<select id="tqaK_${t.id}"><option value="zorunlu">Zorunlu</option><option value="secmeli">Seçmeli</option><option value="ek">Ek / Branş dışı</option></select></label>
@@ -852,69 +942,237 @@
       }).join('') + customList('secmeli') + customForm('secmeli');
   }
 
-  /* 6. Derslikler ve Binalar */
-  function vRooms() {
-    const blds = S.buildings || [], rms = S.rooms || [], opR = S.ui.openRoom || '';
-    return H('Derslikler ve Binalar', 'Çoklu bina geçiş sürelerini (transitionPeriods), özel laboratuvar/atölye kapasitelerini ve derslik kapalı saatlerini yönetin.',
-      `<button class="btn pri" data-act="addRoom">Derslik / Lab ekle</button><button class="btn" data-act="addBld">Bina ekle</button>`) +
-      `<div class="card scroll" style="margin-bottom:14px"><h2>Binalar ve Bina Geçiş Süreleri</h2>
-        <table class="tbl" style="margin-top:8px"><thead><tr><th>Bina Adı</th><th>Kod</th>${blds.map(b => `<th class="n">→ ${esc(b.code || b.name)} (ders boşluğu)</th>`).join('')}<th></th></tr></thead><tbody>
-        ${blds.map(b => `<tr>
-          <td><input data-bld="${b.id}" data-f="name" value="${esc(b.name)}" style="max-width:200px"></td>
-          <td><input data-bld="${b.id}" data-f="code" value="${esc(b.code || '')}" style="width:70px"></td>
-          ${blds.map(b2 => b2.id === b.id ? '<td class="n muted">0</td>' : `<td class="n"><input type="number" min="0" max="4" data-btr="${b.id}|${b2.id}" value="${(b.transitionPeriods || {})[b2.id] || 0}" style="width:62px"></td>`).join('')}
-          <td style="text-align:right"><button class="btn sm ghost" data-act="delBld" data-id="${b.id}" ${blds.length <= 1 ? 'disabled' : ''}>Sil</button></td>
-        </tr>`).join('')}</tbody></table></div>
-      <div class="card scroll"><h2>Derslikler, Laboratuvarlar ve Atölyeler (${rms.length})</h2>
-        <table class="tbl" style="margin-top:8px"><thead><tr><th>Derslik Adı</th><th>Tür</th><th>Bina</th><th class="n">Kapasite</th><th></th></tr></thead><tbody>
-        ${rms.map(r => `<tr>
-          <td><input data-room="${r.id}" data-f="name" value="${esc(r.name)}"></td>
-          <td><select data-room="${r.id}" data-f="type">${EP.ROOM_TYPES.map(([k, l]) => `<option value="${k}" ${r.type === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
-          <td><select data-room="${r.id}" data-f="buildingId">${blds.map(b => `<option value="${b.id}" ${r.buildingId === b.id ? 'selected' : ''}>${esc(b.name)}</option>`).join('')}</select></td>
-          <td class="n"><input type="number" min="1" max="300" data-room="${r.id}" data-f="capacity" value="${r.capacity || 30}" style="width:74px"></td>
-          <td style="text-align:right;white-space:nowrap"><button class="btn sm ghost" data-act="roomSlots" data-id="${r.id}">${opR === r.id ? 'Kapat' : 'Saatler'}</button> <button class="btn sm ghost" data-act="delRoom" data-id="${r.id}">Sil</button></td>
-        </tr>${opR === r.id ? `<tr><td colspan="5">${matrix('room', r)}</td></tr>` : ''}`).join('')}</tbody></table></div>`;
-  }
-
-  /* 7. Ders Görevlendirmeleri (2 Sekme) */
+  /* 6. Ders Görevlendirmeleri (Sınıf Bazında · Öğretmen Bazında + Havuzlar · Tüm Kartlar) */
   function classPanel(c, T) {
     const st = EP.clsStat(S, c), cards = S.cards.filter(x => x.classId === c.id);
     const z = cards.filter(x => x.kind === 'zorunlu'), s = cards.filter(x => x.kind === 'secmeli'), e = cards.filter(x => x.kind === 'ek');
-    const pool = EP.poolFor(S, T, c.grade), have = new Map(s.map(x => [x.subj, x]));
+    const zCatalog = EP.zFor(S, T, c.grade);
+    const missingZ = zCatalog.filter(item => {
+      const so = c.grade <= 4 && EP.SO_SET.has(item.name);
+      const k = EP.findSubj(S, item.name, so) || EP.trSlug(item.name) + (so ? '_SO' : '');
+      return !EP.findClassSubjCard(S, c.id, k);
+    });
+    const pool = EP.poolFor(S, T, c.grade);
     const pill = (l, v, okv) => `<span class="pill ${okv === undefined ? '' : okv ? 'ok' : 'warn'}">${l}: ${v}</span>`;
     const tbl = (rows, empty) => rows.length ? `<div class="scroll"><table class="tbl">${TH_CARD(false)}<tbody>${rows.map(x => cardRow(x, false)).join('')}</tbody></table></div>` : `<p class="small muted" style="padding:6px 0">${empty}</p>`;
-    const subjOpts = [...SK].sort((a, b) => SN(a).localeCompare(SN(b), 'tr')).map(k => `<option value="${k}">${esc(SN(k))} · ${esc(SB(k))}</option>`).join('');
-    return `<div class="card"><div class="row" style="justify-content:space-between"><div><h2>${esc(c.name)}</h2><p class="small muted" style="margin-top:4px">${c.grade}. sınıf · ${T ? esc(T.ad) : 'okul türü yok'}</p></div>
+    const subjOpts = [...SK].sort((a, b) => SN(a).localeCompare(SN(b), 'tr')).map(k => {
+      const ex = EP.findClassSubjCard(S, c.id, k);
+      return `<option value="${k}" ${ex ? 'disabled' : ''}>${esc(SN(k))} · ${esc(SB(k))}${ex ? ' (Bu sınıfta zaten atanmış)' : ''}</option>`;
+    }).join('');
+    return `<div class="card"><div class="row" style="justify-content:space-between"><div><h2>${esc(c.name)}</h2><p class="small muted" style="margin-top:4px">${c.grade}. sınıf · ${T ? esc(T.ad) : 'okul türü yok'} · Aynı sınıfa aynı ders iki kez atanamaz</p></div>
       <div class="row">${pill('Toplam', st.tot + (st.tg ? '/' + st.tg : ''), st.tg ? st.tot === st.tg : undefined)}${pill('Zorunlu', st.z)}${st.lim ? pill('Seçmeli', st.s + '/' + st.lim, st.s === st.lim) : ''}${st.e ? pill('Ek', st.e) : ''}</div></div>
-      <div class="row" style="margin:12px 0"><button class="btn sm" data-act="tplMissing" data-id="${c.id}">Eksik zorunlu dersleri ekle</button>${s.length ? `<button class="btn sm" data-act="copySec" data-id="${c.id}">Seçmelileri ${c.grade}. sınıfın diğer şubelerine kopyala</button><button class="btn sm ghost" data-act="clearSec" data-id="${c.id}">Seçmelileri temizle</button>` : ''}</div>
-      <h3>Zorunlu dersler</h3>${tbl(z, 'Zorunlu ders yok. “Eksik zorunlu dersleri ekle” ile çizelgeden ekleyin.')}
+      <div class="row" style="margin:12px 0">
+        <button class="btn sm ${missingZ.length ? 'pri' : ''}" data-act="tplMissing" data-id="${c.id}">Eksik zorunlu dersleri ekle${missingZ.length ? ` (${missingZ.length})` : ''}</button>
+        ${s.length ? `<button class="btn sm" data-act="copySec" data-id="${c.id}">Seçmelileri ${c.grade}. sınıfın diğer şubelerine kopyala</button><button class="btn sm ghost" data-act="clearSec" data-id="${c.id}">Seçmelileri temizle</button>` : ''}
+      </div>
+      <h3>Sınıftaki zorunlu dersler (${z.length})</h3>${tbl(z, 'Zorunlu ders yok. Aşağıdaki zorunlu dersler havuzundan tek tek veya “Eksik zorunlu dersleri ekle” ile toplu ekleyebilirsiniz.')}
       <h3 style="margin-top:14px">Seçmeli dersler${st.lim ? ` · ${st.s}/${st.lim} saat` : ''}</h3>
       ${st.lim ? `<div class="bar" style="margin:6px 0 8px"><i style="width:${Math.min(100, Math.round(100 * st.s / st.lim))}%;background:${st.s > st.lim ? 'var(--err)' : st.s === st.lim ? 'var(--ok)' : 'var(--warn)'}"></i></div>` : ''}
       ${tbl(s, st.lim ? 'Aşağıdaki havuzdan seçmeli ders ekleyin.' : 'Bu sınıf düzeyinde çizelgede seçmeli ders saati yok.')}
       ${e.length ? `<h3 style="margin-top:14px">Ek ve branş dışı dersler</h3>${tbl(e, '')}` : ''}</div>
+
+      ${zCatalog.length ? `<div class="card"><h2>Zorunlu dersler havuzu · ${c.grade}. sınıf</h2>
+        <p class="small muted" style="margin:4px 0 12px">${c.name} şubesine ait tüm zorunlu dersleri burada görebilir, tek tıkla ekleyebilir veya çıkarabilirsiniz. Zaten ekli olan ders ikinci kez eklenemez.</p>
+        <div class="grid2">${zCatalog.map(item => {
+          const so = c.grade <= 4 && EP.SO_SET.has(item.name);
+          const k = EP.findSubj(S, item.name, so) || EP.trSlug(item.name) + (so ? '_SO' : '');
+          const cur = EP.findClassSubjCard(S, c.id, k);
+          const tch = cur && cur.teacherId ? S.teachers.find(x => x.id === cur.teacherId) : null;
+          const br = S.subjects[k] ? SB(k) : EP.branchOf(item.name, c.grade, S.school.type);
+          return `<div class="pool-row ${cur ? 'mine' : ''}">
+            <div style="min-width:0">
+              <div style="font-weight:600">${esc(item.name)} <span class="muted small">· ${item.hours} sa</span></div>
+              <div class="small muted">${esc(br)}${cur ? (tch ? ' · Atalı: ' + esc(tShort(tch)) : ' · Öğretmensiz') : ' · Henüz eklenmedi'}</div>
+            </div>
+            <div class="row" style="gap:4px;flex-wrap:nowrap">
+              ${cur
+                ? `<span class="pill ok">✓ Eklendi</span><button class="btn sm ghost" data-act="delCard" data-id="${cur.id}" title="Sınıftan kaldır">×</button>`
+                : `<button class="btn sm pri" data-act="zorOneAdd" data-id="${c.id}" data-n="${esc(item.name)}" data-h="${item.hours}">+ Ekle (${item.hours} sa)</button>`}
+            </div>
+          </div>`;
+        }).join('')}</div></div>` : ''}
+
       ${pool.length ? `<div class="card"><h2>Seçmeli ders havuzu · ${c.grade}. sınıf</h2>
         <p class="small muted" style="margin:4px 0 12px">Saat düğmesine basınca ders eklenir.${T.groupRule ? ' Ortaokulda üç gruptan en az birer ders seçilmesi önerilir.' : ''}</p>
         <div class="grid2">${[...T.groups, 'OZEL'].map(gk => {
           const items = pool.filter(p => p.grp === gk); if (!items.length) return '';
           const pk = p => EP.findSubj(S, p.name, false) || EP.trSlug(p.name);
-          const n = items.filter(p => have.has(pk(p))).length;
+          const n = items.filter(p => { const fc = EP.findClassSubjCard(S, c.id, pk(p)); return fc && fc.kind === 'secmeli'; }).length;
           return `<div><h3 style="margin-bottom:8px">${EP.GRP[gk]} ${T.groupRule && gk !== 'OZEL' ? `<span class="tag" style="background:var(--${n ? 'okBg' : 'warnBg'});color:var(--${n ? 'ok' : 'warn'})">${n ? n + ' seçili' : 'seçilmedi'}</span>` : ''}</h3>
             <div class="diag" style="gap:6px">${items.map(p => {
-              const k = pk(p), cur = have.get(k);
-              return `<div class="row" style="justify-content:space-between;padding:6px 10px;border:1px solid ${cur ? 'var(--ok)' : 'var(--line)'};border-radius:9px;background:${cur ? 'var(--okBg)' : 'var(--paper)'}"><span style="font-size:13.5px">${esc(p.name)} <span class="muted small">(${p.times})</span></span>
-                <span class="row" style="gap:4px">${p.opts.map(o => `<button class="btn sm ${cur && +cur.hours === o ? 'pri' : ''}" data-act="secAdd" data-id="${c.id}" data-n="${esc(p.name)}" data-h="${o}">${o} sa</button>`).join('')}${cur ? `<button class="btn sm ghost" data-act="delCard" data-id="${cur.id}">×</button>` : ''}</span></div>`;
+              const k = pk(p), cur = EP.findClassSubjCard(S, c.id, k), isOtherKind = cur && cur.kind !== 'secmeli';
+              return `<div class="row" style="justify-content:space-between;padding:6px 10px;border:1px solid ${cur ? 'var(--ok)' : 'var(--line)'};border-radius:9px;background:${cur ? 'var(--okBg)' : 'var(--paper)'}"><span style="font-size:13.5px">${esc(p.name)} <span class="muted small">(${p.times})${isOtherKind ? ' · Zorunlu ekli' : ''}</span></span>
+                <span class="row" style="gap:4px">${isOtherKind ? '<span class="pill">Zaten ekli</span>' : p.opts.map(o => `<button class="btn sm ${cur && +cur.hours === o ? 'pri' : ''}" data-act="secAdd" data-id="${c.id}" data-n="${esc(p.name)}" data-h="${o}">${o} sa</button>`).join('') + (cur ? `<button class="btn sm ghost" data-act="delCard" data-id="${cur.id}">×</button>` : '')}</span></div>`;
             }).join('')}</div></div>`;
         }).join('')}</div></div>` : ''}
-      <div class="card"><h2>Ek veya branş dışı ders ekle</h2>
+
+      <div class="card"><h2>Manuel ders ekle (Zorunlu / Seçmeli / Ek)</h2>
+        <p class="small muted" style="margin:4px 0 10px">Listeden bir ders seçebilir veya yeni ders adı yazarak <b>zorunlu</b>, <b>seçmeli</b> ya da <b>ek</b> ders olarak bu sınıfa manuel ekleyebilirsiniz. Bu sınıfa zaten atanmış dersler tekrar eklenemez.</p>
         <div class="fields" style="margin-top:10px">
-          <label class="f">Ders<select id="ekS"><option value="__new">— Yeni ders —</option>${subjOpts}</select></label>
-          <label class="f">Yeni ders adı<input id="ekN" placeholder="ör. Matematik Etüdü"></label>
+          <label class="f">Ders türü<select id="ekKind"><option value="zorunlu" selected>Zorunlu ders</option><option value="secmeli">Seçmeli ders</option><option value="ek">Ek / Branş dışı ders</option></select></label>
+          <label class="f">Ders<select id="ekS"><option value="__new">— Yeni ders adı yaz —</option>${subjOpts}</select></label>
+          <label class="f">Yeni ders adı<input id="ekN" placeholder="ör. Matematik Etüdü veya Değerler"></label>
           <label class="f">Branşı<input id="ekB" list="brlist2" placeholder="ör. Matematik"></label>
           <label class="f">Haftalık saat<input type="number" id="ekH" value="2" min="1" max="12"></label>
           <label class="f">Öğretmen<select id="ekT"><option value="">Otomatik (kurala göre)</option>${S.teachers.map(t => `<option value="${t.id}">${esc(t.name)} · ${esc(t.branch || '')}</option>`).join('')}</select></label>
         </div>
         <datalist id="brlist2">${BRANS.map(b => `<option value="${esc(b)}">`).join('')}</datalist>
-        <button class="btn pri" data-act="ekAdd" data-id="${c.id}" style="margin-top:12px">Dersi ekle</button></div>`;
+        <button class="btn pri" data-act="ekAdd" data-id="${c.id}" style="margin-top:12px">Dersi sınıfa ekle</button></div>`;
+  }
+
+  function teacherPoolSection(t) {
+    const T = EP.typeOf(S);
+    const clsFilter = S.ui.tpCls || '';
+    const onlyBranch = Boolean(S.ui.tpOnlyBranch);
+    const hideOther = Boolean(S.ui.tpHideOther);
+    const q = (S.ui.tpQ || '').toLocaleLowerCase('tr').trim();
+    const targetClasses = clsFilter ? S.classes.filter(c => c.id === clsFilter) : S.classes;
+    const extraSet = new Set(t.extra || []);
+
+    const isBranchMatch = (subjKey, branchName) => {
+      if (branchName === EP.REHB) return true;
+      if (t.branch && branchName === t.branch) return true;
+      if (subjKey && extraSet.has(subjKey)) return true;
+      return false;
+    };
+
+    const zorItems = [];
+    const secItems = [];
+
+    for (const c of targetClasses) {
+      const seenZ = new Set();
+      const seenS = new Set();
+
+      // 1) Mevcut sınıf kartları (Zorunlu & Seçmeli)
+      for (const cd of S.cards.filter(x => x.classId === c.id)) {
+        const nm = SN(cd.subj), br = SB(cd.subj);
+        const item = {
+          classId: c.id, className: c.name, grade: c.grade,
+          subj: cd.subj, name: nm, short: SS(cd.subj), branch: br,
+          hours: +cd.hours || 1, kind: cd.kind || 'zorunlu',
+          card: cd, match: isBranchMatch(cd.subj, br), fromCatalog: false
+        };
+        if (cd.kind === 'secmeli') {
+          seenS.add(cd.subj); seenS.add(nm.toLocaleLowerCase('tr'));
+          secItems.push(item);
+        } else {
+          seenZ.add(cd.subj); seenZ.add(nm.toLocaleLowerCase('tr'));
+          zorItems.push(item);
+        }
+      }
+
+      // 2) Müfredatta olup henüz sınıfa eklenmemiş zorunlu dersler
+      for (const z of EP.zFor(S, T, c.grade)) {
+        const so = c.grade <= 4 && EP.SO_SET.has(z.name);
+        const k = EP.findSubj(S, z.name, so) || EP.trSlug(z.name) + (so ? '_SO' : '');
+        if (seenZ.has(k) || seenZ.has(z.name.toLocaleLowerCase('tr')) || EP.findClassSubjCard(S, c.id, k)) continue;
+        const br = S.subjects[k] ? SB(k) : EP.branchOf(z.name, c.grade, S.school.type);
+        zorItems.push({
+          classId: c.id, className: c.name, grade: c.grade,
+          subj: k, name: z.name, short: S.subjects[k] ? SS(k) : EP.autoShort(z.name), branch: br,
+          hours: z.hours, kind: 'zorunlu',
+          card: null, match: isBranchMatch(k, br), fromCatalog: true
+        });
+      }
+
+      // 3) Müfredatta olup henüz sınıfa eklenmemiş seçmeli havuz dersleri
+      const secLim = EP.secLimit(T, c.grade);
+      if (secLim > 0 || clsFilter) {
+        for (const p of EP.poolFor(S, T, c.grade)) {
+          const k = EP.findSubj(S, p.name, false) || EP.trSlug(p.name);
+          if (seenS.has(k) || seenS.has(p.name.toLocaleLowerCase('tr')) || EP.findClassSubjCard(S, c.id, k)) continue;
+          const br = S.subjects[k] ? SB(k) : EP.branchOf(p.name, c.grade, S.school.type);
+          const match = isBranchMatch(k, br);
+          // Tüm sınıflar seçiliyse seçmeli katalogdan branşa uygunları göster, tek sınıf seçiliyse hepsini göster
+          if (!clsFilter && !match && !q) continue;
+          secItems.push({
+            classId: c.id, className: c.name, grade: c.grade,
+            subj: k, name: p.name, short: S.subjects[k] ? SS(k) : EP.autoShort(p.name), branch: br,
+            hours: p.opts[0] || 2, kind: 'secmeli',
+            card: null, match, fromCatalog: true
+          });
+        }
+      }
+    }
+
+    const filterAndSort = items => items.filter(it => {
+      if (onlyBranch && !it.match) return false;
+      const owner = it.card && it.card.teacherId ? it.card.teacherId : '';
+      if (hideOther && owner && owner !== t.id) return false;
+      if (q) {
+        const hay = (it.className + ' ' + it.name + ' ' + it.short + ' ' + it.branch).toLocaleLowerCase('tr');
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    }).sort((a, b) => {
+      const aMine = a.card && a.card.teacherId === t.id ? 0 : 1;
+      const bMine = b.card && b.card.teacherId === t.id ? 0 : 1;
+      const aMatch = a.match ? 0 : 1;
+      const bMatch = b.match ? 0 : 1;
+      const aFree = !a.card || !a.card.teacherId ? 0 : 1;
+      const bFree = !b.card || !b.card.teacherId ? 0 : 1;
+      return aMine - bMine || aMatch - bMatch || aFree - bFree || a.className.localeCompare(b.className, 'tr') || a.name.localeCompare(b.name, 'tr');
+    });
+
+    const zList = filterAndSort(zorItems);
+    const sList = filterAndSort(secItems);
+
+    const renderPoolRow = it => {
+      const ownerId = it.card && it.card.teacherId ? it.card.teacherId : '';
+      const isMine = ownerId === t.id;
+      const isOther = Boolean(ownerId && ownerId !== t.id);
+      const otherT = isOther ? S.teachers.find(x => x.id === ownerId) : null;
+      const rowCls = isMine ? 'mine' : isOther ? 'other' : '';
+      const searchStr = (it.className + ' ' + it.name + ' ' + it.short + ' ' + it.branch).toLocaleLowerCase('tr');
+      return `<div class="pool-row tpool-row ${rowCls}" data-q="${esc(searchStr)}">
+        <label class="pool-lbl">
+          <input type="checkbox" data-tpool="1" data-tid="${t.id}" data-cid="${it.classId}" data-subj="${esc(it.subj)}" data-name="${esc(it.name)}" data-h="${it.hours}" data-kind="${it.kind}" data-card-id="${it.card ? it.card.id : ''}" ${isMine ? 'checked' : ''} ${isOther ? 'disabled' : ''}>
+          <span class="pool-cls">${esc(it.className)}</span>
+          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+            <b>${esc(it.name)}</b> <span class="small muted">· ${it.hours} sa</span>
+            ${it.match ? ' <span class="tag" style="background:var(--okBg);color:var(--ok)">Branş</span>' : ''}
+            ${it.fromCatalog ? ' <span class="tag" style="background:var(--soft);color:var(--mute)">Sınıfa yeni eklenir</span>' : ''}
+          </span>
+        </label>
+        <div class="row" style="gap:4px;flex-wrap:nowrap">
+          ${isMine ? '<span class="pill ok">Atandı</span>'
+            : isOther ? `<span class="small muted">${esc(tShort(otherT))}</span><button class="btn sm" data-act="takeOverCard" data-id="${it.card.id}" data-t="${t.id}" title="Diğer öğretmenden bu öğretmene aktar">Devral ⇄</button>`
+            : '<span class="small muted">Boşta</span>'}
+        </div>
+      </div>`;
+    };
+
+    return `<div class="card" style="margin-top:16px;background:var(--soft);border:0;padding:16px">
+      <div class="row" style="justify-content:space-between;margin-bottom:10px">
+        <div>
+          <h2>Ders Havuzlarından Tik Atarak Öğretmene Ata</h2>
+          <p class="small muted" style="margin-top:3px">Kutucuğa tik attığınızda ders <b>${esc(t.name)}</b> üzerine atanır; tiki kaldırdığınızda öğretmen boşa çıkar. Başka öğretmende olan dersler mükerrer atanmaz, isterseniz <b>Devral ⇄</b> ile aktarabilirsiniz.</p>
+        </div>
+      </div>
+      <div class="row" style="margin-bottom:12px;gap:10px">
+        <select data-ui="tpCls" style="max-width:190px"><option value="">Tüm sınıflar (${S.classes.length})</option>${S.classes.map(c => `<option value="${c.id}" ${clsFilter === c.id ? 'selected' : ''}>${esc(c.name)} (${c.grade}. sınıf)</option>`).join('')}</select>
+        <input id="tpQ" value="${esc(S.ui.tpQ || '')}" placeholder="Ders, sınıf veya branş ara…" style="max-width:240px">
+        <label class="row small" style="gap:6px;cursor:pointer"><input type="checkbox" data-ui="tpOnlyBranch" ${onlyBranch ? 'checked' : ''}> Sadece branşıma uygun</label>
+        <label class="row small" style="gap:6px;cursor:pointer"><input type="checkbox" data-ui="tpHideOther" ${hideOther ? 'checked' : ''}> Başka öğretmendekileri gizle</label>
+      </div>
+      <div class="grid2">
+        <div class="card" style="padding:12px 14px">
+          <div class="row" style="justify-content:space-between;margin-bottom:8px">
+            <h3>Zorunlu Dersler Havuzu</h3>
+            <span class="pill">${zList.length} ders</span>
+          </div>
+          <div class="pool-box">${zList.length ? zList.map(renderPoolRow).join('') : '<p class="small muted">Filtreye uyan zorunlu ders yok.</p>'}</div>
+        </div>
+        <div class="card" style="padding:12px 14px">
+          <div class="row" style="justify-content:space-between;margin-bottom:8px">
+            <h3>Seçmeli Dersler Havuzu</h3>
+            <span class="pill">${sList.length} ders</span>
+          </div>
+          <p class="small muted" style="margin-bottom:8px">${clsFilter ? 'Seçilen sınıfın tüm MEB seçmeli havuzu listelenir.' : 'Mevcut seçmeli dersler + öğretmenin branşına uyan seçmeli havuz dersleri gösterilir; tümünü görmek için yukarıdan bir sınıf seçin.'}</p>
+          <div class="pool-box">${sList.length ? sList.map(renderPoolRow).join('') : '<p class="small muted">Filtreye uyan seçmeli ders yok.</p>'}</div>
+        </div>
+      </div>
+    </div>`;
   }
 
   function vKartBody() {
@@ -973,6 +1231,7 @@
             <span class="pill ${((L[t.id] || 0) > EP.openOf(S, t).tot) ? 'err' : 'ok'}">${L[t.id] || 0} / ${EP.openOf(S, t).tot} saat</span>
           </div>
           ${teacherAssignSection(t, { standalone: true, draggable: true })}
+          ${teacherPoolSection(t)}
         </div>
       </div>`;
     }
@@ -1269,7 +1528,7 @@
   /* 15. Yedekleme ve Senkronizasyon */
   function vProje() {
     const h = getHist();
-    return H('Yedekleme ve Senkronizasyon', 'Yerel JSON yedekleme ve geri yükleme tamamen ücretsiz ve girişsizdir. Hem eski Çarşaf (v2) hem EvrakPlus Multi Plus (v3) dosyalarını kayıpsız açar.') +
+    return H('Yedekleme ve Senkronizasyon', 'Yerel JSON yedekleme ve geri yükleme tamamen ücretsiz ve girişsizdir. Hem eski Çarşaf (v2) hem DersMatrix Ultimate (v3) dosyalarını kayıpsız açar.') +
       `<div class="grid2">
         <div class="card"><h2>Yerel Dosya (Ücretsiz · Girişsiz)</h2>
           <div class="row" style="margin-top:12px">
@@ -1762,7 +2021,15 @@
   }
 
   function setPath(path, val) { const k = path.split('.'); let o = S; for (let i = 0; i < k.length - 1; i++) o = o[k[i]]; o[k.at(-1)] = val; }
-  function go(s) { closePop(); step = s; try { history.replaceState(null, '', '#' + s); } catch (_) { location.hash = s; } sel = ''; render(); window.scrollTo(0, 0); }
+  function go(s) {
+    closePop();
+    if (s === 'rooms') { S.ui.stab = 'rooms'; s = 'school'; }
+    step = s;
+    try { history.replaceState(null, '', '#' + s); } catch (_) { location.hash = s; }
+    sel = '';
+    render();
+    window.scrollTo(0, 0);
+  }
 
   /* =========================================================================
    * ANA RENDER DÖNGÜSÜ
@@ -1793,7 +2060,7 @@
 
     const views = {
       dashboard: vDashboard, school: vOkul, teachers: vOgretmen, classes: vSinif,
-      subjects: vHavuz, rooms: vRooms, assignments: vDersler, constraints: vKural,
+      subjects: vHavuz, rooms: () => { S.ui.stab = 'rooms'; return vOkul(); }, assignments: vDersler, constraints: vKural,
       auto_schedule: vDagitim, timetables: vTimetables, analytics: vAnalytics,
       reports: () => EP.vRapor(S, H, isMember()), backup_sync: vProje, account: vAccount,
       system: vSystem, help: vHelp
@@ -1835,11 +2102,14 @@
         snap(); c.teacherId = ''; EP.dropPlace(S, c.id); commit();
         toast(`${cName(c.classId)} ${SN(c.subj)} öğretmenden çıkarıldı (boştaki derslere alındı).`);
       } break;
-      case 'claimCard': {
+      case 'claimCard':
+      case 'takeOverCard': {
         const c = S.cards.find(x => x.id === id), t = S.teachers.find(x => x.id === a.dataset.t);
         if (!c || !t) break;
         snap(); c.teacherId = t.id;
         if (SB(c.subj) === EP.REHB) { const cl = S.classes.find(x => x.id === c.classId); if (cl) cl.rehber = t.id; }
+        const { bad } = EP.placedCore(S);
+        bad.filter(b => b.split(':')[0] === c.id).forEach(b => delete S.place[b]);
         const v = EP.tcViolation(S, t, c);
         commit();
         toast(`${cName(c.classId)} ${SN(c.subj)} → ${t.name} üzerine alındı.` + (v ? ` Uyarı: sınıf sınırı aşıldı (${v.h}/${v.r.max}).` : ''));
@@ -1850,8 +2120,13 @@
         const h = Math.max(1, Math.min(12, +($('#tqaH_' + id) || {}).value || 2));
         const kind = ($('#tqaK_' + id) || {}).value || 'zorunlu';
         if (!t || !cid || !sj) { toast('Sınıf ve ders seçin.'); break; }
+        if (EP.findClassSubjCard(S, cid, sj)) {
+          toast(`${cName(cid)} sınıfına ${SN(sj)} dersi zaten atanmış! Aynı sınıfa aynı ders ikinci kez atanamaz.`);
+          break;
+        }
         snap();
         const nc = EP.newCard(S, cid, sj, h, kind);
+        if (!nc) { toast('Bu sınıfa bu ders zaten atanmış.'); break; }
         nc.teacherId = t.id;
         commit();
         toast(`${cName(cid)} ${SN(sj)} (${h} sa) oluşturuldu ve ${t.name} üzerine atandı.`);
@@ -1910,8 +2185,15 @@
       case 'pmAdd': if (pop) {
         const tch = pop.kind === 't' ? entOf('t', pop.ent) : null, cls = pop.kind === 'c' ? entOf('c', pop.ent) : S.classes.find(c => c.id === pop.cls);
         if (!cls) break;
+        const k0 = EP.findSubj(S, a.dataset.n, cls.grade <= 4 && EP.SO_SET.has(a.dataset.n));
+        if (k0 && EP.findClassSubjCard(S, cls.id, k0)) {
+          toast(`${cls.name} sınıfına ${a.dataset.n} dersi zaten atanmış!`);
+          break;
+        }
         snap(); const k = EP.ensureSubj(S, a.dataset.n, cls.grade), h = +a.dataset.h, kind = a.dataset.kind; syncSubj();
-        const nc = EP.newCard(S, cls.id, k, h, kind); nc.pattern = a.dataset.p;
+        const nc = EP.newCard(S, cls.id, k, h, kind);
+        if (!nc) { toast(`${cls.name} sınıfına ${a.dataset.n} dersi zaten atanmış!`); break; }
+        nc.pattern = a.dataset.p;
         if (!EP.effPats(S, nc).includes(nc.pattern)) { nc.bmode = 'fixed'; nc.bpats = [nc.pattern]; }
         if (tch) nc.teacherId = tch.id; else if (S.ui.amode !== 'off') EP.assignCards(S, [nc]);
         const r = placeHere(nc.id);
@@ -2046,16 +2328,35 @@
       } break;
       case 'delT': if (await ask('Öğretmen silinecek; dersleri öğretmensiz kalacak.', 'Sil')) { snap(); S.teachers = S.teachers.filter(t => t.id !== id); S.cards.forEach(c => { if (c.teacherId === id) c.teacherId = ''; }); commit(); } break;
       case 'autoAssign': { snap(); const r = EP.assignCards(S, S.cards, S.ui.amode === 'off' ? 'brans_ek' : S.ui.amode); commit(); toast(assignMsg(r)); } break;
+      case 'stab': S.ui.stab = a.dataset.v; render(); break;
       case 'dtab': S.ui.dtab = a.dataset.v; render(); break;
       case 'htab': S.ui.htab = a.dataset.v; render(); break;
       case 'rtab': S.ui.rtab = a.dataset.v; render(); break;
       case 'csel': S.ui.csel = id; render(); break;
       case 'applyP': { const T = EP.typeOf(S); if (T) { snap(); S.school.P = T.P; commit(); } } break;
+      case 'zorOneAdd': {
+        const c = S.classes.find(x => x.id === id); if (!c) break;
+        const h = Math.max(1, +a.dataset.h || 2), k = EP.ensureSubj(S, a.dataset.n, c.grade); syncSubj();
+        if (EP.findClassSubjCard(S, id, k)) {
+          toast(`${c.name} sınıfına ${a.dataset.n} dersi zaten ekli!`);
+          break;
+        }
+        snap();
+        const nc = EP.newCard(S, id, k, h, 'zorunlu');
+        if (nc && S.ui.amode !== 'off') EP.assignCards(S, [nc]);
+        commit();
+        toast(`${c.name} için ${a.dataset.n} (${h} sa) zorunlu ders olarak eklendi.`);
+      } break;
       case 'secAdd': {
         const c = S.classes.find(x => x.id === id), h = +a.dataset.h, k = EP.ensureSubj(S, a.dataset.n, c.grade); syncSubj();
-        const cur = S.cards.find(x => x.classId === id && x.subj === k && x.kind === 'secmeli'); snap();
+        const cur = EP.findClassSubjCard(S, id, k);
+        if (cur && cur.kind !== 'secmeli') {
+          toast(`${c.name} sınıfında ${a.dataset.n} zaten zorunlu/ek ders olarak atanmış! Aynı sınıfa aynı ders iki kez atanamaz.`);
+          break;
+        }
+        snap();
         if (cur) { cur.hours = h; cur.pattern = EP.patFor(h); commit(); break; }
-        const nc = EP.newCard(S, id, k, h, 'secmeli'); if (S.ui.amode !== 'off') EP.assignCards(S, [nc]); commit();
+        const nc = EP.newCard(S, id, k, h, 'secmeli'); if (nc && S.ui.amode !== 'off') EP.assignCards(S, [nc]); commit();
         toast(`${a.dataset.n} eklendi (${h} sa).`);
       } break;
       case 'copySec': {
@@ -2065,17 +2366,43 @@
         snap(); const gone = new Set(others.map(x => x.id)), del = new Set(S.cards.filter(x => gone.has(x.classId) && x.kind === 'secmeli').map(x => x.id));
         S.cards = S.cards.filter(x => !del.has(x.id)); for (const k in S.place) if (del.has(k.split(':')[0])) delete S.place[k];
         const made = [];
-        for (const o of others) for (const x of src) { const nc = EP.newCard(S, o.id, x.subj, x.hours, 'secmeli'); if (x.bmode) { nc.bmode = x.bmode; nc.bpats = (x.bpats || []).slice(); nc.pattern = EP.effPats(S, nc)[0]; } made.push(nc); }
+        for (const o of others) for (const x of src) {
+          if (EP.findClassSubjCard(S, o.id, x.subj)) continue;
+          const nc = EP.newCard(S, o.id, x.subj, x.hours, 'secmeli');
+          if (!nc) continue;
+          if (x.bmode) { nc.bmode = x.bmode; nc.bpats = (x.bpats || []).slice(); nc.pattern = EP.effPats(S, nc)[0]; }
+          made.push(nc);
+        }
         const r = S.ui.amode === 'off' ? null : EP.assignCards(S, made); commit();
         toast(others.length + ' şubeye kopyalandı. ' + (r ? assignMsg(r) : ''));
       } break;
       case 'clearSec': if (await ask('Bu şubenin tüm seçmeli dersleri silinecek.', 'Sil')) { snap(); const del = new Set(S.cards.filter(x => x.classId === id && x.kind === 'secmeli').map(x => x.id)); S.cards = S.cards.filter(x => !del.has(x.id)); for (const k in S.place) if (del.has(k.split(':')[0])) delete S.place[k]; commit(); } break;
       case 'ekAdd': {
-        const c = S.classes.find(x => x.id === id); let k = $('#ekS').value; const h = Math.max(1, +$('#ekH').value || 1);
-        if (k === '__new') { const nm = $('#ekN').value.trim(); if (!nm) { toast('Yeni dersin adını yazın.'); break; } snap(); k = EP.ensureSubj(S, nm, c.grade); const br = $('#ekB').value.trim(); if (br) S.subjects[k][2] = br; syncSubj(); } else snap();
-        const nc = EP.newCard(S, id, k, h, 'ek'), tsel = $('#ekT').value;
+        const c = S.classes.find(x => x.id === id); if (!c) break;
+        let k = $('#ekS').value;
+        const h = Math.max(1, Math.min(12, +$('#ekH').value || 1));
+        const kind = ($('#ekKind') && $('#ekKind').value) || 'zorunlu';
+        if (k === '__new') {
+          const nm = $('#ekN').value.trim();
+          if (!nm) { toast('Yeni dersin adını yazın.'); break; }
+          const existingKey = EP.findSubj(S, nm, c.grade <= 4 && EP.SO_SET.has(nm));
+          if (existingKey && EP.findClassSubjCard(S, id, existingKey)) {
+            toast(`${c.name} sınıfına ${nm} dersi zaten atanmış! Aynı sınıfa aynı ders iki kez atanamaz.`);
+            break;
+          }
+          snap(); k = EP.ensureSubj(S, nm, c.grade); const br = $('#ekB').value.trim(); if (br) S.subjects[k][2] = br; syncSubj();
+        } else {
+          if (EP.findClassSubjCard(S, id, k)) {
+            toast(`${c.name} sınıfına ${SN(k)} dersi zaten atanmış! Aynı sınıfa aynı ders iki kez atanamaz.`);
+            break;
+          }
+          snap();
+        }
+        const nc = EP.newCard(S, id, k, h, kind);
+        if (!nc) { toast(`${c.name} sınıfına ${SN(k)} dersi zaten atanmış!`); break; }
+        const tsel = $('#ekT').value;
         if (tsel) nc.teacherId = tsel; else if (S.ui.amode !== 'off') EP.assignCards(S, [nc]);
-        commit(); toast(`${SN(k)} eklendi.`);
+        commit(); toast(`${c.name} için ${SN(k)} (${kind === 'zorunlu' ? 'Zorunlu' : kind === 'secmeli' ? 'Seçmeli' : 'Ek'} · ${h} sa) eklendi.`);
       } break;
       case 'subjAdd': { const nm = $('#nsN').value.trim(); if (!nm) { toast('Ders adı yazın.'); break; } snap(); const k = EP.ensureSubj(S, nm, 9); const sh = $('#nsS').value.trim(), br = $('#nsB').value.trim(); if (sh) S.subjects[k][1] = sh; if (br) S.subjects[k][2] = br; commit(); toast(nm + ' eklendi.'); } break;
       case 'subjDel': if (!S.cards.some(c => c.subj === id) && await ask(SN(id) + ' silinecek.', 'Sil')) { snap(); delete S.subjects[id]; S.teachers.forEach(t => { t.extra = (t.extra || []).filter(x => x !== id); }); S.rules = S.rules.filter(r => r.a !== id && r.b !== id); commit(); } break;
@@ -2169,15 +2496,33 @@
         commit(); toast(nm + ' kulüp listesine eklendi.');
       } break;
       case 'dutyClear': if (await ask('Tüm öğretmenlerin nöbet günü silinecek.', 'Temizle')) { snap(); S.teachers.forEach(t => { t.dutyD = ''; t.dutyP = ''; }); commit(); } break;
-      /* Çıktılar (Üyeler: temiz · Üyesizler: EVRAK PLUS filigranlı) & Güncelleme */
-      case 'exDoc': case 'exAllDocs': {
-        const mode = await resolveExportMode(act === 'exAllDocs' ? 'Toplu çıktı alma' : 'Yazdır / PDF indirme');
+      /* Çıktılar (Gerçek PDF + Doğrudan Yazdırma + Excel/Word/CSV/PNG · Üyeler temiz, Üyesizler EVRAK PLUS filigranlı) */
+      case 'exPdf': case 'exAllPdf': case 'exDoc': case 'exAllDocs': {
+        const isAll = act === 'exAllPdf' || act === 'exAllDocs';
+        const mode = await resolveExportMode(isAll ? 'Tüm belgeleri PDF olarak indirme' : 'PDF belgesi indirme');
         if (!mode) break;
         const wm = mode !== 'clean', tab = S.ui.rtab || 'cp';
-        let body, title;
-        if (act === 'exAllDocs') { body = ['cp', 'cs', 'tp', 'ts', 'nb'].map(t => EP.docsFor(S, t, '', { watermark: wm })).join(''); title = S.school.name + ' tüm çıktılar'; }
-        else { const selId = tab === 'cp' ? S.ui.rselc : tab === 'tp' ? S.ui.rselt : ''; body = EP.docsFor(S, tab, selId || '', { watermark: wm }); title = S.school.name + ' ' + ((EP.RTABS.find(x => x[0] === tab) || [])[1] || 'program'); }
-        downloadBlob(title.replace(/[\\/:*?"<>|]+/g, '') + '.html', EP.docFile(S, body, title), 'text/html;charset=utf-8');
+        let body, title, isLandscape = false;
+        if (isAll) {
+          body = ['cp', 'cs', 'tp', 'ts', 'nb'].map(t => EP.docsFor(S, t, '', { watermark: wm })).join('');
+          title = S.school.name + ' tum belgeler';
+        } else {
+          const selId = tab === 'cp' ? S.ui.rselc : tab === 'tp' ? S.ui.rselt : '';
+          body = EP.docsFor(S, tab, selId || '', { watermark: wm });
+          title = S.school.name + ' ' + ((EP.RTABS.find(x => x[0] === tab) || [])[1] || 'program');
+          isLandscape = tab === 'cs' || tab === 'ts';
+        }
+        await exportReportPdf(EP.docFile(S, body, title), title, isLandscape);
+      } break;
+      case 'exPrint': {
+        const mode = await resolveExportMode('Doğrudan yazdırma');
+        if (!mode) break;
+        const wm = mode !== 'clean', tab = S.ui.rtab || 'cp';
+        const selId = tab === 'cp' ? S.ui.rselc : tab === 'tp' ? S.ui.rselt : '';
+        const body = EP.docsFor(S, tab, selId || '', { watermark: wm });
+        const title = S.school.name + ' ' + ((EP.RTABS.find(x => x[0] === tab) || [])[1] || 'program');
+        const isLandscape = tab === 'cs' || tab === 'ts';
+        await printReportNow(EP.docFile(S, body, title), isLandscape);
       } break;
       case 'exExcel': {
         const mode = await resolveExportMode('Excel (.xls) dışa aktarma');
@@ -2247,7 +2592,7 @@
           const o = JSON.parse(fr.result);
           if (!o || !o.school || (!Array.isArray(o.cards) && !Array.isArray(o.assignments))) throw 0;
           snap(); S = EP.migrateState(o); hist('Dosya açıldı: ' + el.files[0].name); step = 'auto_schedule'; commit(); toast('Proje başarıyla açıldı.');
-        } catch (_) { toast('Geçerli bir Çarşaf (v2) veya EvrakPlus Multi Plus (v3) JSON dosyası değil.'); }
+        } catch (_) { toast('Geçerli bir Çarşaf (v2) veya DersMatrix Ultimate (v3) JSON dosyası değil.'); }
       };
       fr.readAsText(el.files[0]); return;
     }
@@ -2257,6 +2602,54 @@
       if (el.type === 'number' || el.dataset.k === 'school.D') v = Math.max(0, +v || 0);
       if (el.dataset.k === 'school.P') v = Math.min(12, Math.max(1, v));
       setPath(el.dataset.k, v); commit(); return;
+    }
+    if (el.dataset.tqac) {
+      const tid = el.dataset.tqac, cid = el.value, selEl = $('#tqaS_' + tid);
+      if (selEl) {
+        const opts = [...SK].sort((a, b) => SN(a).localeCompare(SN(b), 'tr')).map(k => {
+          const dup = cid && EP.findClassSubjCard(S, cid, k);
+          return `<option value="${k}" ${dup ? 'disabled' : ''}>${esc(SN(k))} · ${esc(SB(k))}${dup ? ' (Sınıfta zaten var)' : ''}</option>`;
+        }).join('');
+        selEl.innerHTML = opts;
+        const firstFree = [...selEl.options].find(o => !o.disabled);
+        if (firstFree) selEl.value = firstFree.value;
+      }
+      return;
+    }
+    if (el.dataset.tpool) {
+      const tid = el.dataset.tid, cid = el.dataset.cid, nm = el.dataset.name, h = Math.max(1, +el.dataset.h || 2), kind = el.dataset.kind || 'zorunlu';
+      const t = S.teachers.find(x => x.id === tid), c = S.classes.find(x => x.id === cid);
+      if (!t || !c) return;
+      const existingCard = (el.dataset.cardId && S.cards.find(x => x.id === el.dataset.cardId)) || EP.findClassSubjCard(S, cid, el.dataset.subj);
+      if (el.checked) {
+        if (existingCard && existingCard.teacherId && existingCard.teacherId !== t.id) {
+          el.checked = false;
+          toast(`${c.name} ${SN(existingCard.subj)} başka öğretmende; aktarmak için “Devral ⇄” düğmesini kullanın.`);
+          return;
+        }
+        snap();
+        let card = existingCard;
+        if (!card) {
+          const k = EP.ensureSubj(S, nm, c.grade); syncSubj();
+          card = EP.newCard(S, cid, k, h, kind);
+        }
+        if (card) {
+          card.teacherId = t.id;
+          if (SB(card.subj) === EP.REHB) c.rehber = t.id;
+          const v = EP.tcViolation(S, t, card);
+          commit();
+          toast(`${c.name} ${SN(card.subj)} (${card.hours} sa) → ${t.name} üzerine atandı.` + (v ? ` Sınır uyarısı: ${v.h}/${v.r.max}.` : ''));
+        }
+      } else {
+        if (existingCard && existingCard.teacherId === t.id) {
+          snap();
+          existingCard.teacherId = '';
+          EP.dropPlace(S, existingCard.id);
+          commit();
+          toast(`${c.name} ${SN(existingCard.subj)} öğretmenden çıkarıldı (sınıfta boşa alındı).`);
+        }
+      }
+      return;
     }
     if (el.dataset.ui) {
       S.ui[el.dataset.ui] = el.type === 'checkbox' ? el.checked : el.value;
@@ -2345,6 +2738,12 @@
       unQ = e.target.value; const q = unQ.toLocaleLowerCase('tr').trim(); let n = 0, t = 0;
       document.querySelectorAll('.unq').forEach(b => { t++; const v = !q || b.dataset.q.includes(q); b.style.display = v ? '' : 'none'; if (v) n++; });
       const c = $('#unN'); if (c) c.textContent = q ? `${n} / ${t} gösteriliyor` : '';
+      return;
+    }
+    if (e.target.id === 'tpQ') {
+      S.ui.tpQ = e.target.value;
+      const q = e.target.value.toLocaleLowerCase('tr').trim();
+      document.querySelectorAll('.tpool-row').forEach(r => { r.style.display = !q || r.dataset.q.includes(q) ? '' : 'none'; });
       return;
     }
     if (e.target.id === 'tAssignQ') {
@@ -2463,7 +2862,7 @@
     bc.onmessage = e => {
       if (e.data === 'merhaba') bc.postMessage('buradayim');
       if (e.data === 'merhaba' || e.data === 'buradayim') {
-        $('#banner').innerHTML = '<div class="banner">EvrakPlus Multi Plus başka bir sekmede de açık. İki sekme aynı yerel kaydı kullanır ve birbirinin üzerine yazabilir; birini kapatın.</div>';
+        $('#banner').innerHTML = '<div class="banner">DersMatrix Ultimate başka bir sekmede de açık. İki sekme aynı yerel kaydı kullanır ve birbirinin üzerine yazabilir; birini kapatın.</div>';
       }
     };
     bc.postMessage('merhaba');

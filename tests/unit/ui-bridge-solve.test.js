@@ -115,10 +115,19 @@ test('MEB social clubs, admin duty exemption, simplified menus & zero GitHub lin
   assert.equal(st.teachers[0].kulup, '', 'Okul Müdürü should not be auto-assigned a club');
   assert.ok(EP.SOCIAL_CLUBS.includes(st.teachers[3].kulup));
 
-  // 4. Redundant menus 10 & 11 removed, zero GitHub links in UI files
+  // 4. Redundant menus 10 & 11 removed, rooms moved inside school settings, zero GitHub links in UI files
   const menuIds = EP.MENUS.map(m => m[0]);
   assert.ok(!menuIds.includes('multi_solver'));
   assert.ok(!menuIds.includes('manual_schedule'));
+  assert.ok(!menuIds.includes('rooms'), 'Derslikler ve Binalar must live inside Okul Ayarları');
+
+  // 4b. Duplicate course assignment to the same class must be blocked
+  const cls0 = st.classes[0];
+  const beforeCount = st.cards.length;
+  const dupAttempt = EP.newCard(st, cls0.id, 'MAT', 5, 'zorunlu');
+  assert.equal(dupAttempt, null, 'Assigning the same subject twice to the same class must return null');
+  assert.equal(st.cards.length, beforeCount);
+  assert.ok(EP.findClassSubjCard(st, cls0.id, 'MAT'));
 
   for (const f of ['index.html', 'styles.css', 'meb-data.js', 'solver-bridge.js', 'reports-doc.js', 'app.js']) {
     const content = fs.readFileSync(path.join(uiDir, f), 'utf8');

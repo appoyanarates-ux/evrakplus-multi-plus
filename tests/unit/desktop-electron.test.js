@@ -64,13 +64,18 @@ test('Electron gömülü motor yolları ve electron-builder ASAR-dışı güvenl
   assert.equal(builderCfg.asar, true);
   assert.ok(builderCfg.extraResources.some(r => r.to === 'engines'), 'Motorlar ASAR dışına (extraResources) konulmalı');
   assert.ok(builderCfg.extraResources.some(r => r.to === 'runtime'), 'Runtime ASAR dışına (extraResources) konulmalı');
+  assert.equal(builderCfg.productName, 'DersMatrix Ultimate');
+  assert.equal(builderCfg.executableName, 'DersMatrixUltimate');
+  assert.equal(builderCfg.win.icon, 'build/icon.ico');
   assert.ok(builderCfg.nsis.artifactName.includes('Setup'));
   assert.ok(builderCfg.portable.artifactName.includes('Portable'));
 
-  // main.js güvenlik ayarlarının statik denetimi
+  // main.js güvenlik ve yerel PDF ayarlarının statik denetimi
   const mainSrc = fs.readFileSync(path.resolve('apps/desktop-electron/src/main.js'), 'utf8');
   assert.ok(mainSrc.includes('contextIsolation: true'));
   assert.ok(mainSrc.includes('nodeIntegration: false'));
   assert.ok(mainSrc.includes('sandbox: true'));
   assert.ok(mainSrc.includes('Content-Security-Policy'));
+  assert.ok(mainSrc.includes('printToPDF'));
+  assert.ok(mainSrc.includes("ipcMain.handle('export:pdf'"));
 });

@@ -1,9 +1,9 @@
 <?php
 /**
- * Plugin Name: EvrakPlus Multi Plus Connect
+ * Plugin Name: DersMatrix Ultimate Connect (by EvrakPlus)
  * Plugin URI: https://www.evrakplus.com/ders-dagitim-multi-plus/
- * Description: EvrakPlus Ders Dagitim Multi Plus masaustu, web ve PWA uygulamalari icin guvenli PKCE uyelik dogrulama, imzali yetki belgesi ve bulut senkronizasyon REST API eklentisi.
- * Version: 1.0.0
+ * Description: DersMatrix Ultimate masaustu, web ve PWA uygulamalari icin guvenli PKCE uyelik dogrulama, imzali yetki belgesi ve bulut senkronizasyon REST API eklentisi.
+ * Version: 2.1.0
  * Requires PHP: 8.1
  * Author: EvrakPlus
  * Author URI: https://www.evrakplus.com/
@@ -14,7 +14,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('EP_MP_VERSION', '1.0.0');
+define('EP_MP_VERSION', '2.1.0');
 define('EP_MP_NS', 'evrakplus/v1');
 define('EP_MP_ACCESS_TTL', 900);        // 15 dakika kisa omurlu access token
 define('EP_MP_REFRESH_TTL', 2592000);   // 30 gun refresh token

@@ -393,7 +393,7 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
       x.fillStyle = '#5a616c'; x.font = '500 16px Inter, Arial'; x.fillText('EVRAK PLUS · Ücretsiz üye girişi yaparak bu filigranları kaldırabilirsiniz · EVRAK PLUS', W / 2, by + 134);
     } else {
       x.textAlign = 'left'; x.font = '18px Inter, Arial'; x.fillStyle = '#8a9099';
-      x.fillText('EvrakPlus Ders Dağıtım Programı ile hazırlandı', 48, Hh - 34);
+      x.fillText('DersMatrix Ultimate · EvrakPlus ile hazırlandı', 48, Hh - 34);
     }
     return cv;
   }
@@ -422,9 +422,9 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
     const tab = (S.ui.rtab && RTABS.some(x => x[0] === S.ui.rtab)) ? S.ui.rtab : 'cp';
     const r = rep(S), o = EP.occ(S), tot = o.m.blocks.length;
     const head = H('Raporlar ve Çıktılar', isMember
-      ? 'EvrakPlus üyeliğiniz aktif: tüm çıktılarınız tamamen temiz ve filigransız olarak hazırlanır.'
+      ? 'EvrakPlus üyeliğiniz aktif: tüm PDF, Excel, Word ve PNG çıktılarınız tamamen temiz ve filigransız olarak hazırlanır.'
       : 'Üye olmadan da tüm çıktıları alabilirsiniz (üyesiz çıktılarda EVRAK PLUS filigranı yer alır). Ücretsiz EvrakPlus girişi yaparak filigransız temiz çıktı alabilirsiniz.',
-      `<button class="btn" data-act="exAllDocs">Tüm belgeler tek dosyada</button>`);
+      `<button class="btn pri" data-act="exAllPdf">Tüm Belgeleri PDF İndir (.pdf)</button>`);
     const tabs = `<div class="tabs" style="margin-bottom:12px;display:inline-flex">${RTABS.map(x => `<button data-act="rtab" data-v="${x[0]}" class="${tab === x[0] ? 'on' : ''}">${x[1]}</button>`).join('')}</div>`;
     const sets = `<details class="card" style="margin-bottom:12px;padding:12px 16px" ${!r.mudur || !r.gecerli ? 'open' : ''}><summary>Belge bilgileri ve kağıt ayarı ${!r.mudur || !r.gecerli ? '<span class="tag" style="background:var(--warnBg);color:var(--warn)">eksik</span>' : ''}</summary>
       <div class="fields" style="margin-top:10px">
@@ -444,19 +444,22 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
       const ents = tab === 'cp' ? S.classes : S.teachers, k = tab === 'cp' ? 'rselc' : 'rselt';
       sel = S.ui[k] || ''; if (sel && !ents.some(e => e.id === sel)) sel = '';
       ctl = `<select data-ui="${k}" aria-label="Seçim"><option value="">Tümü (${ents.length})</option>${ents.map(e => `<option value="${e.id}" ${sel === e.id ? 'selected' : ''}>${EP.esc(e.name)}</option>`).join('')}</select>
-        <button class="btn pri" data-act="exDoc">Yazdır / PDF (.html)</button>
+        <button class="btn pri" data-act="exPdf">PDF İndir (.pdf)</button>
+        <button class="btn" data-act="exPrint">Yazdır</button>
         <button class="btn" data-act="exExcel">Excel (.xls)</button>
         <button class="btn" data-act="exWord">Word (.doc)</button>
         <button class="btn" data-act="exPng2" ${sel ? '' : 'disabled title="Önce tek sınıf veya öğretmen seçin"'}>WhatsApp görseli (.png)</button>`;
     } else if (tab === 'cs' || tab === 'ts') {
-      ctl = `<button class="btn pri" data-act="exDoc">Yazdır / PDF (.html)</button>
+      ctl = `<button class="btn pri" data-act="exPdf">PDF İndir (.pdf)</button>
+        <button class="btn" data-act="exPrint">Yazdır</button>
         <button class="btn" data-act="exExcel">Excel (.xls)</button>
         <button class="btn" data-act="exWord">Word (.doc)</button>
         <button class="btn" data-act="exCsv">Çarşaf tablosu (.csv)</button>`;
     } else if (tab === 'nb') {
       const pl = dutyPlaces(S), adm = (S.duty && S.duty.admin) || {}, D = +S.school.D;
       const vpNames = [...new Set([...myList(S).map(m => m.name), ...S.teachers.filter(t => t.role === 'mudur_yardimcisi').map(t => t.name)].filter(Boolean))];
-      ctl = `<button class="btn pri" data-act="exDoc">Yazdır / PDF (.html)</button>
+      ctl = `<button class="btn pri" data-act="exPdf">PDF İndir (.pdf)</button>
+        <button class="btn" data-act="exPrint">Yazdır</button>
         <button class="btn" data-act="exWord">Word (.doc)</button>
         <button class="btn" data-act="dutyAuto">Nöbetleri otomatik dağıt</button>
         <button class="btn" data-act="clubAuto">Sosyal kulüpleri dağıt</button>

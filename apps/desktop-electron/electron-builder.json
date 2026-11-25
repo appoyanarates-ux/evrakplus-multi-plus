@@ -1,16 +1,19 @@
 {
   "appId": "com.evrakplus.dersdagitim.multiplus",
-  "productName": "EvrakPlus Ders Dağıtım Multi Plus",
-  "executableName": "EvrakPlusMultiPlus",
+  "productName": "DersMatrix Ultimate",
+  "executableName": "DersMatrixUltimate",
   "copyright": "Copyright © 2026 EvrakPlus",
   "electronVersion": "34.5.8",
   "npmRebuild": false,
   "asar": true,
+  "afterPack": "./scripts/after-pack-icon.cjs",
   "directories": {
     "output": "../../dist/windows"
   },
   "files": [
     "src/**/*",
+    "build/icon.ico",
+    "build/icon.png",
     "package.json",
     {
       "from": "../../packages/core-schema",
@@ -54,6 +57,14 @@
       "to": "ui-shared/public"
     },
     {
+      "from": "./build/icon.ico",
+      "to": "icon.ico"
+    },
+    {
+      "from": "./build/icon.png",
+      "to": "icon.png"
+    },
+    {
       "from": "../../engines/ortools/solver_cpsat.py",
       "to": "engines/ortools/solver_cpsat.py"
     },
@@ -90,12 +101,13 @@
     }
   ],
   "win": {
+    "icon": "build/icon.ico",
     "signAndEditExecutable": false,
     "target": [
       { "target": "nsis", "arch": ["x64"] },
       { "target": "portable", "arch": ["x64"] }
     ],
-    "artifactName": "EvrakPlus-Multi-Plus-${version}-${target}.${ext}"
+    "artifactName": "DersMatrix-Ultimate-${version}-${target}.${ext}"
   },
   "nsis": {
     "oneClick": false,
@@ -103,17 +115,13 @@
     "perMachine": false,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
-    "shortcutName": "EvrakPlus Ders Dağıtım Multi Plus",
-    "artifactName": "EvrakPlus-Multi-Plus-${version}-Setup.${ext}"
+    "shortcutName": "DersMatrix Ultimate",
+    "installerIcon": "build/icon.ico",
+    "uninstallerIcon": "build/icon.ico",
+    "installerHeaderIcon": "build/icon.ico",
+    "artifactName": "DersMatrix-Ultimate-${version}-Setup.${ext}"
   },
   "portable": {
-    "artifactName": "EvrakPlus-Multi-Plus-${version}-Portable.${ext}"
-  },
-  "publish": [
-    {
-      "provider": "github",
-      "owner": "appoyanarates-ux",
-      "repo": "evrakplus-multi-plus"
-    }
-  ]
+    "artifactName": "DersMatrix-Ultimate-${version}-Portable.${ext}"
+  }
 }

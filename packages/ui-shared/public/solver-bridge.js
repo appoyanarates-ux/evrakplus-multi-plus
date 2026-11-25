@@ -64,7 +64,7 @@
     return {
       v: 3,
       schemaVersion: 3,
-      appVersion: '2.0.0',
+      appVersion: '2.1.0',
       id: uid(),
       revision: 1,
       updatedAt: new Date().toISOString(),
@@ -94,8 +94,9 @@
       ui: {
         prio: 'gaps', time: 30, solverMode: 'smart', engine: 'ortools',
         view: 'sinif', ent: '', cf: '', tf: '', kf: '', only: false,
-        sel: '', amode: 'brans_ek', dtab: 'sinif', htab: 'z', rtab: 'cp', csel: '',
-        tsel: '', openCls: '', openRoom: '', diagOpen: false, pmLock: false, bused: false,
+        sel: '', amode: 'brans_ek', stab: 'genel', dtab: 'sinif', htab: 'z', rtab: 'cp', csel: '',
+        tsel: '', tpCls: '', tpQ: '', tpOnlyBranch: false, tpHideOther: false,
+        openCls: '', openRoom: '', diagOpen: false, pmLock: false, bused: false,
         theme: 'auto'
       }
     };
@@ -711,7 +712,16 @@
     return n;
   }
 
+  function findClassSubjCard(S, classId, subj) {
+    const targetName = String(SN(S, subj) || '').trim().toLocaleLowerCase('tr');
+    return (S.cards || []).find(c =>
+      c.classId === classId &&
+      (c.subj === subj || (targetName && String(SN(S, c.subj) || '').trim().toLocaleLowerCase('tr') === targetName))
+    ) || null;
+  }
+
   function newCard(S, classId, subj, hours, kind) {
+    if (findClassSubjCard(S, classId, subj)) return null;
     const c = { id: uid(), classId, subj, hours: +hours, pattern: patFor(hours), teacherId: '', roomId: '', kind };
     c.pattern = effPats(S, c)[0];
     S.cards.push(c);
@@ -722,8 +732,9 @@
     const T = typeOf(S), out = [];
     for (const z of zFor(S, T, cls.grade)) {
       const k = ensureSubj(S, z.name, cls.grade);
-      if (onlyMissing && S.cards.some(x => x.classId === cls.id && x.subj === k && x.kind !== 'secmeli')) continue;
-      out.push(newCard(S, cls.id, k, z.hours, 'zorunlu'));
+      if (findClassSubjCard(S, cls.id, k)) continue;
+      const nc = newCard(S, cls.id, k, z.hours, 'zorunlu');
+      if (nc) out.push(nc);
     }
     return out;
   }
@@ -1057,7 +1068,7 @@
     SN, SS, SB, nameOf, blkKey, blkCfgN, blkCfg, effCfg, effPats, dropPlace, syncPattern, syncAll,
     times, cardMap, tName, tShort, cName, loads, openOf, classHours, classOpen,
     buildModel, placedCore, occ, SCOPE, modeFor, tMode, tcRulesFor, tcHours, tcViolation, tcAll,
-    rehberOf, clsStat, pickTeacher, assignCards, setRehber, rehberAuto, newCard, applyTemplate, closeExtra,
+    rehberOf, clsStat, pickTeacher, assignCards, setRehber, rehberAuto, findClassSubjCard, newCard, applyTemplate, closeExtra,
     lockedIds, lockedInClosed, lockImpact, impactFor, whyText, whyAt, precheck, quality, editInfoFor
   });
 })(typeof window !== 'undefined' ? window : globalThis);

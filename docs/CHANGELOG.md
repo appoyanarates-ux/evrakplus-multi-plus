@@ -1,4 +1,20 @@
-# EvrakPlus Ders Dağıtım Multi Plus — Değişiklik Geçmişi (CHANGELOG)
+# DersMatrix Ultimate (by EvrakPlus) — Değişiklik Geçmişi (CHANGELOG)
+
+## [2.1.0] - 2026-11-25
+
+### Yenilikler ve İyileştirmeler
+- **Yeni Marka Kimliği (`DersMatrix Ultimate`)**: Uygulama adı, Windows kurulum/taşınabilir EXE (`DersMatrixUltimate.exe`), yeni mavi Windows uygulama ikonu (`icon.ico`), yan menü logosu ve Ana Panel banner görseli eklendi.
+- **Gerçek Yerel PDF Çıktısı (`.pdf`) ve Doğrudan Yazdırma**: Masaüstü uygulamasında Chromium `printToPDF` ile gerçek vektörel `.pdf` dosyası kaydetme/açma ve doğrudan yazıcıya gönderme (`Yazdır`); web tarayıcısında yerel PDF/yazdırma penceresi. Üyeler için %100 temiz, üyesiz kullanıcılar için büyük ve küçük **EVRAK PLUS** filigranlı çıktı.
+- **Ders Görevlendirmeleri — Görünür Zorunlu Dersler Havuzu ve Manuel Ekleme**: `Sınıf bazında` sekmesinde müfredattaki tüm zorunlu dersler tek tek görünür (Eklendi / Eksik + tek tıkla `+ Ekle`), ayrıca manuel olarak Zorunlu / Seçmeli / Ek ders eklenebilir.
+- **Mükerrer Ders Koruması**: Bir sınıfa atanmış olan dersin aynı sınıfa ikinci kez atanması veri modeli ve tüm arayüz formlarında kesin olarak engellendi.
+- **Öğretmen Bazında Tikli Zorunlu & Seçmeli Ders Havuzları**: `Ders Görevlendirmeleri → Öğretmen bazında` sekmesine sınıf/arama/branş filtreli **Zorunlu Dersler Havuzu** ve **Seçmeli Dersler Havuzu** eklendi; kutucuğa tik atarak doğrudan atama/boşa çıkarma ve başka öğretmendeki dersi `Devral ⇄` ile mükerrersiz aktarma.
+- **Derslikler ve Binalar → Okul Ayarları Altında**: Bağımsız menü kaldırılarak `Okul Ayarları` ekranı içine sekme olarak taşındı (15 sade menü).
+- **v2.0.0'dan Kesintisiz Otomatik Güncelleme**: `DersMatrix-Ultimate-2.1.0-Setup.exe` + `SHA256SUMS.txt` ile mevcut `v2.0.0` kurulumları uygulama içinden tek tıkla otomatik güncellenebilir.
+
+## [2.0.0] - 2026-11-25
+
+### Eklenenler
+- Uygulama içi kalıcı EvrakPlus oturum penceresi (`persist:evrakplus-auth`), üyesiz büyük/küçük EVRAK PLUS filigranlı çıktılar, SHA-256 doğrulamalı otomatik güncelleyici, MEB 38 sosyal kulüp, idareci nöbet muafiyeti ve etkileşimli öğretmen görevlendirme kartları.
 
 ## [1.0.0] - 2026-11-24
 

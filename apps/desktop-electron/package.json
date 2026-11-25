@@ -1,7 +1,7 @@
 {
-  "name": "evrakplus-multi-plus",
-  "version": "2.0.0",
-  "description": "EvrakPlus Ders Dağıtım Multi Plus — Windows 64-bit Electron Masaüstü Uygulaması",
+  "name": "dersmatrix-ultimate",
+  "version": "2.1.0",
+  "description": "DersMatrix Ultimate by EvrakPlus — Windows 64-bit Electron Masaüstü Uygulaması",
   "type": "module",
   "main": "./src/main.js",
   "author": "EvrakPlus",

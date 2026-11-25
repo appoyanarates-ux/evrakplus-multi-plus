@@ -428,7 +428,6 @@
     ['teachers', 'Öğretmenler'],
     ['classes', 'Sınıflar ve Şubeler'],
     ['subjects', 'Dersler ve Bloklar'],
-    ['rooms', 'Derslikler ve Binalar'],
     ['assignments', 'Ders Görevlendirmeleri'],
     ['constraints', 'Kural ve Kısıt Yönetimi'],
     ['auto_schedule', 'Dağıtım ve Program'],

@@ -16,13 +16,14 @@ $csrf = ep_csrf_token();
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#14171c">
+  <meta name="theme-color" content="#0b3b91">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="EvrakPlus Multi+">
-  <link rel="apple-touch-icon" href="./assets/icons/icon-192.svg">
+  <meta name="apple-mobile-web-app-title" content="DersMatrix Ultimate">
+  <link rel="icon" type="image/png" href="./assets/icons/dersmatrix-icon.png">
+  <link rel="apple-touch-icon" href="./assets/icons/dersmatrix-icon.png">
   <meta name="csrf-token" content="<?= htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8') ?>">
-  <title>EvrakPlus Ders Dağıtım Multi Plus · Web &amp; PWA</title>
+  <title>DersMatrix Ultimate · v2.1.0 Web &amp; PWA</title>
   <link rel="manifest" href="./manifest.json">
   <link rel="stylesheet" href="./assets/css/styles.css">
 </head>
