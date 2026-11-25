@@ -171,30 +171,110 @@
     $('#mX').addEventListener('click', () => { M.innerHTML = ''; });
   }
 
-  function openLoginUrl() {
-    if (bridge && typeof bridge.startAuth === 'function') {
-      bridge.startAuth();
-    } else {
-      window.open(EP.EVRAKPLUS_LOGIN_URL, '_blank', 'noopener,noreferrer');
+  const APP_VER = (bridge && bridge.appVersion) || '2.0.0';
+  let updateInfo = null;
+  let updateProgress = null;
+  const isMember = () => Boolean(authUser && (authUser.loggedIn || authUser.entitlementValid));
+
+  function renderUpdateBanner() {
+    const b = $('#banner');
+    if (!b) return;
+    if (updateProgress) {
+      b.innerHTML = `<div class="upd-banner"><span>${esc(updateProgress.message || 'Güncelleme indiriliyor…')}</span><div class="bar" style="width:220px;margin:0"><i style="width:${updateProgress.percent || 0}%;background:var(--ok)"></i></div></div>`;
+      return;
+    }
+    if (updateInfo && updateInfo.updateAvailable) {
+      b.innerHTML = `<div class="upd-banner"><span>Yeni sürüm hazır: <b>v${esc(updateInfo.latestVersion)}</b> (Mevcut: v${esc(APP_VER)})</span><div class="row"><button class="btn sm pri" data-act="installUpdate">Şimdi Güncelle ve Kur</button><button class="btn sm ghost" data-act="dismissUpdate">Sonra</button></div></div>`;
     }
   }
 
-  function requireMembership(actionLabel) {
-    if (authUser && authUser.entitlementValid) return true;
+  async function doEvrakPlusLogin() {
+    if (bridge && typeof bridge.startAuth === 'function') {
+      toast('EvrakPlus giriş penceresi açılıyor… Giriş yaptığınızda otomatik tanınacaktır.');
+      const st = await bridge.startAuth();
+      if (st && st.loggedIn) {
+        authUser = st;
+        render();
+        toast(`EvrakPlus girişi tamamlandı: ${st.displayName || st.username} — Filigransız çıktı aktif!`);
+        return true;
+      }
+      return false;
+    }
+    window.open(EP.EVRAKPLUS_LOGIN_URL, '_blank', 'noopener,noreferrer');
+    return false;
+  }
+
+  async function doEvrakPlusLogout() {
+    if (bridge && typeof bridge.logoutAuth === 'function') {
+      await bridge.logoutAuth();
+    }
+    authUser = null;
+    render();
+    toast('EvrakPlus oturumu kapatıldı.');
+  }
+
+  async function refreshEvrakPlusAuth(silent) {
+    if (bridge && typeof bridge.getAuthStatus === 'function') {
+      try {
+        const st = await bridge.getAuthStatus();
+        authUser = st && st.loggedIn ? st : null;
+        render();
+        if (!silent) toast(authUser ? `Oturum aktif: ${authUser.displayName || authUser.username}` : 'Aktif EvrakPlus oturumu bulunamadı. Uygulama içinden giriş yapın.');
+        return Boolean(authUser);
+      } catch (_) {}
+    } else if (typeof location !== 'undefined' && /evrakplus\.com$/i.test(location.hostname)) {
+      try {
+        const r = await fetch('/wp-json/evrakplus-multi-plus/v1/auth/me', { credentials: 'include' });
+        if (r.ok) {
+          const data = await r.json();
+          if (data && data.user) {
+            authUser = { loggedIn: true, entitlementValid: true, username: data.user.username || data.user.name, displayName: data.user.name || data.user.username };
+            render();
+            return true;
+          }
+        }
+      } catch (_) {}
+    }
+    return false;
+  }
+
+  function resolveExportMode(actionLabel) {
+    if (isMember()) return Promise.resolve('clean');
+    return new Promise(res => {
+      const M = $('#modalRoot');
+      M.innerHTML = `<div class="modal"><div class="box">
+        <h2>${esc(actionLabel)}</h2>
+        <p>Üye olmadan da çıktı alabilirsiniz; üyesiz çıktılarda belgenin her yerinde büyük ve küçük <b>EVRAK PLUS</b> filigran yazıları yer alır.</p>
+        <div class="msg info"><span class="ic">i</span><div>Ücretsiz EvrakPlus hesabınızla giriş yaptığınızda filigranlar otomatik kalkar ve <b>tamamen temiz resmi çıktı</b> alırsınız.</div><span></span></div>
+        <div class="row" style="justify-content:flex-end;gap:8px;flex-wrap:wrap">
+          <button class="btn ghost" id="mExpCancel">Vazgeç</button>
+          <button class="btn" id="mExpGuest">Üye Olmadan Filigranlı İndir</button>
+          <button class="btn pri" id="mExpLogin">EvrakPlus ile Giriş Yap (Filigransız)</button>
+        </div>
+      </div></div>`;
+      $('#mExpCancel').addEventListener('click', () => { M.innerHTML = ''; res(null); });
+      $('#mExpGuest').addEventListener('click', () => { M.innerHTML = ''; res('watermarked'); });
+      $('#mExpLogin').addEventListener('click', async () => {
+        M.innerHTML = '';
+        const ok = await doEvrakPlusLogin();
+        res(ok ? 'clean' : null);
+      });
+    });
+  }
+
+  function requireCloudMembership(actionLabel) {
+    if (isMember()) return true;
     const M = $('#modalRoot');
     M.innerHTML = `<div class="modal"><div class="box">
-      <h2>Ücretsiz üyelik gerekli</h2>
-      <p><b>${esc(actionLabel)}</b> özelliği için ücretsiz EvrakPlus hesabınızla giriş yapmanız gerekir. Yerel program oluşturma, 6 motorlu dağıtım, manuel düzenleme, ekran önizleme ve JSON yedekleme her zaman tamamen ücretsiz ve girişsizdir.</p>
-      <div class="msg info"><span class="ic">i</span><div>Üyelik doğrulaması yalnızca <b>evrakplus.com</b> sunucuları üzerinden güvenli PKCE bağlantısıyla yapılır.</div><span></span></div>
+      <h2>Ücretsiz EvrakPlus üyeliği gerekli</h2>
+      <p><b>${esc(actionLabel)}</b> için ücretsiz EvrakPlus hesabınızla giriş yapın.</p>
       <div class="row" style="justify-content:flex-end">
         <button class="btn ghost" id="mLater">Daha Sonra</button>
-        <button class="btn" id="mSignup">Ücretsiz Üye Ol</button>
-        <button class="btn pri" id="mLogin">Giriş Yap</button>
+        <button class="btn pri" id="mLogin">EvrakPlus ile Giriş Yap</button>
       </div>
     </div></div>`;
     $('#mLater').addEventListener('click', () => { M.innerHTML = ''; });
-    $('#mSignup').addEventListener('click', () => { openLoginUrl(); M.innerHTML = ''; });
-    $('#mLogin').addEventListener('click', () => { openLoginUrl(); M.innerHTML = ''; });
+    $('#mLogin').addEventListener('click', () => { M.innerHTML = ''; doEvrakPlusLogin(); });
     return false;
   }
 
@@ -1221,18 +1301,25 @@
 
   /* 14. EvrakPlus Hesabım */
   function vAccount() {
-    return H('EvrakPlus Hesabım', 'Tüm yerel okul planlama, ders dağıtımı ve JSON yedekleme girişsizdir. Çıktı indirme ve bulut senkronizasyonu ücretsiz EvrakPlus üyeliği ile açılır.') +
+    const logged = isMember();
+    return H('EvrakPlus Hesabım', 'Tüm yerel okul planlama, ders dağıtımı, JSON yedekleme ve filigranlı çıktı alma girişsizdir. Ücretsiz EvrakPlus girişiyle tüm çıktılarınız tamamen temiz ve filigransız olur.') +
       `<div class="grid2">
         <div class="card"><h2>Oturum Durumu</h2>
-          <p class="small muted" style="margin:8px 0 14px">${authUser ? `Giriş yapıldı: <b>${esc(authUser.email || authUser.name)}</b>` : 'Şu an giriş yapılmadı (Yerel Ücretsiz Mod).'}</p>
-          <div class="row"><button class="btn pri" data-act="openLogin">EvrakPlus Giriş Yap</button><button class="btn" data-act="openLogin">Ücretsiz Üye Ol</button></div>
+          <p class="small muted" style="margin:8px 0 14px">${logged
+            ? `<span class="pill ok">Üye Girişi Aktif</span> &nbsp;<b>${esc(authUser.displayName || authUser.username || 'EvrakPlus Üyesi')}</b> — Tüm çıktılarınız filigransız ve temizdir.`
+            : 'Şu an giriş yapılmadı. Üyesiz çıktılarda EVRAK PLUS filigranı görünür. Uygulama içinden giriş yaptığınızda oturumunuz otomatik kaydedilir.'}</p>
+          <div class="row">
+            ${logged
+              ? `<button class="btn" data-act="refreshAuth">Oturumu Doğrula</button><button class="btn ghost" data-act="logoutAuth">Çıkış Yap</button>`
+              : `<button class="btn pri" data-act="openLogin">EvrakPlus ile Giriş Yap / Üye Ol</button><button class="btn" data-act="refreshAuth">Oturumu Kontrol Et</button>`}
+          </div>
         </div>
         <div class="card"><h2>Özellik Erişimi</h2>
           <table class="tbl" style="margin-top:8px"><tbody>
             <tr><td>Okul, öğretmen, sınıf, ders ve kurallar</td><td><span class="pill ok">Girişsiz Ücretsiz</span></td></tr>
             <tr><td>Otomatik ve manuel ders dağıtımı</td><td><span class="pill ok">Girişsiz Ücretsiz</span></td></tr>
-            <tr><td>Resmi belge önizleme &amp; JSON yedekleme</td><td><span class="pill ok">Girişsiz Ücretsiz</span></td></tr>
-            <tr><td>PDF, Excel, Word, PNG, Toplu çıktı &amp; Bulut</td><td><span class="pill warn">Ücretsiz Üyelik</span></td></tr>
+            <tr><td>PDF, Excel, Word, PNG, CSV çıktıları</td><td><span class="pill ${logged ? 'ok' : 'warn'}">${logged ? 'Filigransız Temiz' : 'Filigranlı Ücretsiz'}</span></td></tr>
+            <tr><td>Filigransız Resmi Çıktı &amp; Bulut Senkronizasyonu</td><td><span class="pill ok">Ücretsiz EvrakPlus Üyeliği</span></td></tr>
           </tbody></table>
         </div>
       </div>`;
@@ -1241,7 +1328,8 @@
   /* 15. Sistem ve Güncellemeler */
   function vSystem() {
     const info = sysInfo;
-    return H('Sistem ve Güncellemeler', 'Uygulama sürümü ve görünüm ayarları.') +
+    const upd = updateInfo;
+    return H('Sistem ve Güncellemeler', 'Uygulama sürümü, otomatik güncelleme ve görünüm ayarları.') +
       `<div class="grid2">
         <div class="card"><h2>Görünüm ve Tema</h2>
           <div class="row" style="margin-top:12px">
@@ -1250,13 +1338,19 @@
             <button class="btn ${S.ui.theme === 'dark' ? 'pri' : ''}" data-act="setTheme" data-v="dark">Koyu Tema</button>
           </div>
         </div>
-        <div class="card"><h2>Uygulama Bilgisi</h2>
+        <div class="card"><h2>Uygulama ve Otomatik Güncelleme</h2>
           <table class="tbl" style="margin-top:8px"><tbody>
-            <tr><td>Uygulama Sürümü</td><td><b>v1.0.0</b></td></tr>
+            <tr><td>Uygulama Sürümü</td><td><b>v${esc(APP_VER)}</b></td></tr>
             <tr><td>Çalışma Ortamı</td><td>${bridge ? 'Windows Masaüstü Uygulaması' : webApi ? 'Web Uygulaması' : 'Tarayıcı Önizleme'}</td></tr>
             ${info ? `<tr><td>İşlemci / Bellek</td><td>${info.cpus} çekirdek · ${info.freeMemGB}/${info.totalMemGB} GB RAM</td></tr>` : ''}
+            <tr><td>Güncelleme Durumu</td><td>${updateProgress ? esc(updateProgress.message) : upd ? (upd.updateAvailable ? `<span class="pill ok">Yeni sürüm hazır: v${esc(upd.latestVersion)}</span>` : (upd.error ? `<span class="small muted">${esc(upd.error)}</span>` : `<span class="pill ok">Güncel (v${esc(upd.latestVersion || APP_VER)})</span>`)) : '<span class="small muted">Henüz kontrol edilmedi</span>'}</td></tr>
           </tbody></table>
-          <div class="row" style="margin-top:12px"><a class="btn sm" href="${EP.EVRAKPLUS_SITE_URL}" target="_blank" rel="noopener">EvrakPlus Güncellemelerini Kontrol Et</a></div>
+          ${updateProgress ? `<div class="bar" style="margin-top:10px"><i style="width:${updateProgress.percent || 0}%;background:var(--ok)"></i></div>` : ''}
+          <div class="row" style="margin-top:12px">
+            ${bridge ? `<button class="btn" data-act="checkUpdate" ${updateProgress ? 'disabled' : ''}>Güncellemeleri Denetle</button>` : ''}
+            ${bridge && upd && upd.updateAvailable ? `<button class="btn pri" data-act="installUpdate" ${updateProgress ? 'disabled' : ''}>v${esc(upd.latestVersion)} İndir ve Kur</button>` : ''}
+            <a class="btn sm ghost" href="${EP.EVRAKPLUS_SITE_URL}" target="_blank" rel="noopener">evrakplus.com</a>
+          </div>
         </div>
       </div>`;
   }
@@ -1689,8 +1783,8 @@
     $('#sideMenu').innerHTML = EP.MENUS.map((m, i) => `<a href="#${m[0]}" class="${step === m[0] ? 'on' : ''}" data-step="${m[0]}"><i>${i + 1}</i><span>${m[1]}</span>${m[0] === 'auto_schedule' && pc.some(x => x.lvl === 'err') ? '<b class="dot" title="Çakışma var"></b>' : ''}</a>`).join('');
     $('#topSchoolName').textContent = S.school.name + ' · ' + S.school.year + (S.school.donem && S.school.donem !== 'Yıllık' ? ' · ' + S.school.donem : '');
     const rtEl = $('#topRuntime');
-    rtEl.textContent = bridge ? 'Masaüstü' : webApi ? 'Web' : 'Çevrimdışı';
-    rtEl.className = 'pill ' + (bridge ? 'ok' : webApi ? 'warn' : '');
+    rtEl.textContent = isMember() ? ('Üye: ' + (authUser.displayName || authUser.username)) : (bridge ? 'Masaüstü' : webApi ? 'Web' : 'Çevrimdışı');
+    rtEl.className = 'pill ' + (isMember() ? 'ok' : bridge ? 'ok' : webApi ? 'warn' : '');
     $('#bUndo').disabled = !undo.length;
     $('#bRedo').disabled = !redo.length;
     statPill();
@@ -1701,10 +1795,11 @@
       dashboard: vDashboard, school: vOkul, teachers: vOgretmen, classes: vSinif,
       subjects: vHavuz, rooms: vRooms, assignments: vDersler, constraints: vKural,
       auto_schedule: vDagitim, timetables: vTimetables, analytics: vAnalytics,
-      reports: () => EP.vRapor(S, H), backup_sync: vProje, account: vAccount,
+      reports: () => EP.vRapor(S, H, isMember()), backup_sync: vProje, account: vAccount,
       system: vSystem, help: vHelp
     };
     $('#view').innerHTML = (views[step] || vDagitim)();
+    renderUpdateBanner();
     renderPop();
   }
 
@@ -2074,39 +2169,68 @@
         commit(); toast(nm + ' kulüp listesine eklendi.');
       } break;
       case 'dutyClear': if (await ask('Tüm öğretmenlerin nöbet günü silinecek.', 'Temizle')) { snap(); S.teachers.forEach(t => { t.dutyD = ''; t.dutyP = ''; }); commit(); } break;
-      /* Üyelik Kapılı Çıktılar & Bulut */
+      /* Çıktılar (Üyeler: temiz · Üyesizler: EVRAK PLUS filigranlı) & Güncelleme */
       case 'exDoc': case 'exAllDocs': {
-        if (!requireMembership(act === 'exAllDocs' ? 'Toplu çıktı alma' : 'Yazdır / PDF indirme')) break;
-        const tab = S.ui.rtab || 'cp';
+        const mode = await resolveExportMode(act === 'exAllDocs' ? 'Toplu çıktı alma' : 'Yazdır / PDF indirme');
+        if (!mode) break;
+        const wm = mode !== 'clean', tab = S.ui.rtab || 'cp';
         let body, title;
-        if (act === 'exAllDocs') { body = ['cp', 'cs', 'tp', 'ts', 'nb'].map(t => EP.docsFor(S, t, '')).join(''); title = S.school.name + ' tüm çıktılar'; }
-        else { const selId = tab === 'cp' ? S.ui.rselc : tab === 'tp' ? S.ui.rselt : ''; body = EP.docsFor(S, tab, selId || ''); title = S.school.name + ' ' + ((EP.RTABS.find(x => x[0] === tab) || [])[1] || 'program'); }
+        if (act === 'exAllDocs') { body = ['cp', 'cs', 'tp', 'ts', 'nb'].map(t => EP.docsFor(S, t, '', { watermark: wm })).join(''); title = S.school.name + ' tüm çıktılar'; }
+        else { const selId = tab === 'cp' ? S.ui.rselc : tab === 'tp' ? S.ui.rselt : ''; body = EP.docsFor(S, tab, selId || '', { watermark: wm }); title = S.school.name + ' ' + ((EP.RTABS.find(x => x[0] === tab) || [])[1] || 'program'); }
         downloadBlob(title.replace(/[\\/:*?"<>|]+/g, '') + '.html', EP.docFile(S, body, title), 'text/html;charset=utf-8');
       } break;
       case 'exExcel': {
-        if (!requireMembership('Excel (.xls) dışa aktarma')) break;
+        const mode = await resolveExportMode('Excel (.xls) dışa aktarma');
+        if (!mode) break;
         const tab = S.ui.rtab || 'cp', selId = tab === 'cp' ? S.ui.rselc : tab === 'tp' ? S.ui.rselt : '';
-        downloadBlob(fileName('xls'), EP.excelExport(S, tab, selId || ''), 'application/vnd.ms-excel;charset=utf-8');
+        downloadBlob(fileName('xls'), EP.excelExport(S, tab, selId || '', { watermark: mode !== 'clean' }), 'application/vnd.ms-excel;charset=utf-8');
       } break;
       case 'exWord': {
-        if (!requireMembership('Word (.doc) dışa aktarma')) break;
+        const mode = await resolveExportMode('Word (.doc) dışa aktarma');
+        if (!mode) break;
         const tab = S.ui.rtab || 'cp', selId = tab === 'cp' ? S.ui.rselc : tab === 'tp' ? S.ui.rselt : '';
-        downloadBlob(fileName('doc'), EP.wordExport(S, tab, selId || ''), 'application/msword;charset=utf-8');
+        downloadBlob(fileName('doc'), EP.wordExport(S, tab, selId || '', { watermark: mode !== 'clean' }), 'application/msword;charset=utf-8');
       } break;
       case 'exCsv': {
-        if (!requireMembership('Çarşaf CSV dışa aktarma')) break;
-        downloadBlob(fileName('csv').replace('.csv', ' carsaf.csv'), EP.csvExport(S), 'text/csv;charset=utf-8');
+        const mode = await resolveExportMode('Çarşaf CSV dışa aktarma');
+        if (!mode) break;
+        downloadBlob(fileName('csv').replace('.csv', ' carsaf.csv'), EP.csvExport(S, { watermark: mode !== 'clean' }), 'text/csv;charset=utf-8');
       } break;
       case 'exPng2': {
-        if (!requireMembership('WhatsApp PNG görseli oluşturma')) break;
+        const mode = await resolveExportMode('WhatsApp PNG görseli oluşturma');
+        if (!mode) break;
         const tab = S.ui.rtab, kind = tab === 'cp' ? 'c' : 't', id2 = tab === 'cp' ? S.ui.rselc : S.ui.rselt;
         if (!id2) break;
-        const cv = EP.pngCanvas(S, kind, id2); if (!cv) break;
+        const cv = EP.pngCanvas(S, kind, id2, { watermark: mode !== 'clean' }); if (!cv) break;
         const nm = ((kind === 't' ? S.teachers : S.classes).find(x => x.id === id2) || {}).name || 'program';
         showImg(cv, nm);
       } break;
-      case 'cloudSync': requireMembership('EvrakPlus Bulut Senkronizasyonu'); break;
-      case 'openLogin': openLoginUrl(); break;
+      case 'cloudSync': requireCloudMembership('EvrakPlus Bulut Senkronizasyonu'); break;
+      case 'openLogin': await doEvrakPlusLogin(); break;
+      case 'refreshAuth': await refreshEvrakPlusAuth(false); break;
+      case 'logoutAuth': await doEvrakPlusLogout(); break;
+      case 'checkUpdate': {
+        if (!bridge || typeof bridge.checkUpdate !== 'function') break;
+        toast('Güncellemeler kontrol ediliyor…');
+        updateInfo = await bridge.checkUpdate();
+        render();
+        if (updateInfo && updateInfo.updateAvailable) toast(`Yeni sürüm mevcut: v${updateInfo.latestVersion}!`);
+        else if (updateInfo && updateInfo.error) toast('Güncelleme kontrolü: ' + updateInfo.error);
+        else toast(`Uygulamanız güncel (v${APP_VER}).`);
+      } break;
+      case 'installUpdate': {
+        if (!bridge || typeof bridge.downloadAndInstallUpdate !== 'function') break;
+        try {
+          updateProgress = { percent: 1, message: 'Güncelleme başlatılıyor…' };
+          render();
+          await bridge.downloadAndInstallUpdate(updateInfo);
+        } catch (err) {
+          updateProgress = null;
+          render();
+          toast('Güncelleme hatası: ' + (err && err.message ? err.message : String(err)));
+        }
+      } break;
+      case 'dismissUpdate': updateInfo = Object.assign({}, updateInfo, { updateAvailable: false }); $('#banner').innerHTML = ''; render(); break;
       case 'setTheme': S.ui.theme = a.dataset.v; save(); render(); break;
       case 'newEmpty': if (await ask('Mevcut proje kapanacak. Önce JSON yedek aldığınızdan emin olun.', 'Boş proje aç')) { snap(); S = EP.blank(); hist('Boş proje'); step = 'school'; commit(); } break;
       case 'demo': case 'demoX': if (await ask('Mevcut projenin yerine örnek okul yüklenecek.', 'Yükle')) { snap(); S = EP.demo(act === 'demoX'); relax = null; hist(act === 'demoX' ? 'Çakışmalı örnek' : 'Örnek okul'); step = 'auto_schedule'; commit(); if (act === 'demo' && !bridge && !webApi) runBrowserSolve('full'); } break;
@@ -2358,7 +2482,7 @@
     $('#btnInstallPwa').style.display = 'none';
   });
 
-  /* Electron Canlı Motor İlerlemesi */
+  /* Electron Canlı Motor, Oturum ve Güncelleme Dinleyicileri */
   if (bridge && typeof bridge.onSolverProgress === 'function') {
     bridge.onSolverProgress(({ engineId, progress }) => {
       if (running === 'native') {
@@ -2366,6 +2490,26 @@
         if (progress && progress.assignedBlocks != null) live.placed = progress.assignedBlocks;
         if (progress && progress.message) live.status = progress.message;
         upLive();
+      }
+    });
+  }
+  if (bridge && typeof bridge.onAuthChanged === 'function') {
+    bridge.onAuthChanged(st => {
+      authUser = st && st.loggedIn ? st : null;
+      render();
+    });
+  }
+  if (bridge && typeof bridge.onUpdaterEvent === 'function') {
+    bridge.onUpdaterEvent(ev => {
+      if (!ev) return;
+      if (ev.type === 'available' && ev.info) {
+        updateInfo = ev.info;
+        renderUpdateBanner();
+        if (step === 'system') render();
+      } else if (ev.type === 'progress' || ev.type === 'verifying' || ev.type === 'ready') {
+        updateProgress = { percent: ev.percent || 0, message: ev.message || '' };
+        renderUpdateBanner();
+        if (step === 'system') render();
       }
     });
   }
@@ -2395,6 +2539,7 @@
     if (bridge && typeof bridge.getSystemInfo === 'function') {
       bridge.getSystemInfo().then(info => { sysInfo = info; if (step === 'system') render(); }).catch(() => {});
     }
+    refreshEvrakPlusAuth(true);
   }
 
   init();

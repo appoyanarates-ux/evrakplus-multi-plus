@@ -124,4 +124,15 @@ test('MEB social clubs, admin duty exemption, simplified menus & zero GitHub lin
     const content = fs.readFileSync(path.join(uiDir, f), 'utf8');
     assert.ok(!/github\.com/i.test(content), `Found forbidden github.com reference in ${f}`);
   }
+
+  // 5. Guest export includes giant + small EVRAK PLUS watermarks; member export is 100% clean
+  const wmDoc = EP.docsFor(st, 'cp', '', { watermark: true });
+  const cleanDoc = EP.docsFor(st, 'cp', '', { watermark: false });
+  assert.ok(wmDoc.includes('wm-giant') && wmDoc.includes('EVRAK PLUS') && wmDoc.includes('wm-big') && wmDoc.includes('wm-q1') && wmDoc.includes('wm-top'));
+  assert.ok(!cleanDoc.includes('wm-giant') && !cleanDoc.includes('wm-big') && !cleanDoc.includes('wm-layer'));
+
+  const wmCsv = EP.csvExport(st, { watermark: true });
+  const cleanCsv = EP.csvExport(st, { watermark: false });
+  assert.ok(wmCsv.includes('EVRAK PLUS'));
+  assert.ok(!cleanCsv.includes('EVRAK PLUS'));
 });

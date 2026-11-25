@@ -27,7 +27,18 @@
 .doc.landscape .g td{height:30px;padding:0 1px;overflow:hidden}.doc.landscape .g td b{font-size:8.5px;white-space:nowrap;overflow:hidden}
 .doc.landscape .g td span{font-size:8px;white-space:nowrap;overflow:hidden;display:block}
 .doc.landscape .g td.nm{background:#e6e6e6;font-weight:700;font-size:10px;text-align:left;padding-left:3px;white-space:normal;line-height:1.1}
-.doc .g .sep{border-left:2px solid #000}.doc .duty td{height:46px;font-size:12.5px}`;
+.doc .g .sep{border-left:2px solid #000}.doc .duty td{height:46px;font-size:12.5px}
+.doc.wm-on{position:relative;overflow:hidden}
+.doc .wm-top{font:700 10px/1.2 Arial,sans-serif;color:#b91c1c;text-align:center;border-bottom:1px dashed #d42a38;padding:3px 0 5px;margin-bottom:8px;letter-spacing:.6px}
+.doc .wm-layer{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:2}
+.doc .wm-big{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%) rotate(-28deg);font:900 72px/1 Arial,sans-serif;color:rgba(212,42,56,.15);white-space:nowrap;letter-spacing:6px}
+.doc .wm-q{position:absolute;font:700 15px/1.2 Arial,sans-serif;color:rgba(212,42,56,.22);transform:rotate(-24deg);white-space:nowrap}
+.doc .wm-q1{top:14%;left:6%}.doc .wm-q2{top:18%;right:6%}.doc .wm-q3{bottom:24%;left:8%}.doc .wm-q4{bottom:22%;right:8%}
+.doc .wm-q5{top:62%;left:34%;font-size:12px;color:rgba(20,23,28,.16)}
+.doc .wm-foot{margin-top:22px;padding:12px 10px;border-top:3px solid #d42a38;border-bottom:3px solid #d42a38;background:rgba(212,42,56,.06);text-align:center;font-family:Arial,sans-serif}
+.doc .wm-foot .wm-giant{font-size:44px;font-weight:900;color:#d42a38;letter-spacing:5px;line-height:1.05}
+.doc .wm-foot .wm-med{font-size:14px;font-weight:700;color:#14171c;margin-top:4px;letter-spacing:1.2px}
+.doc .wm-foot .wm-sm{font-size:10px;color:#555;margin-top:4px;letter-spacing:.4px}`;
 
   const upTR = s => String(s || '').toLocaleUpperCase('tr');
   const normTR = s => String(s || '').trim().toLocaleLowerCase('tr');
@@ -235,14 +246,36 @@
     return n;
   }
 
-  function docsFor(S, tab, selId) {
-    const o = EP.occ(S);
-    if (tab === 'cp') return (selId ? S.classes.filter(c => c.id === selId) : S.classes).map(c => docClass(S, c, o)).join('');
-    if (tab === 'tp') return (selId ? S.teachers.filter(t => t.id === selId) : S.teachers).map(t => docTeacher(S, t, o)).join('');
-    if (tab === 'cs') return docSheet(S, 'c', o);
-    if (tab === 'ts') return docSheet(S, 't', o);
-    if (tab === 'nb') return docDuty(S);
-    return '';
+  function decorateWatermark(html, watermark) {
+    if (!watermark || !html) return html;
+    const wmOverlay = `<div class="wm-layer" aria-hidden="true">
+      <div class="wm-big">EVRAK PLUS</div>
+      <div class="wm-q wm-q1">EVRAK PLUS · evrakplus.com</div>
+      <div class="wm-q wm-q2">EVRAK PLUS · ÜYESİZ ÇIKTI</div>
+      <div class="wm-q wm-q3">EVRAK PLUS · evrakplus.com</div>
+      <div class="wm-q wm-q4">EVRAK PLUS · DERS DAĞITIM</div>
+      <div class="wm-q wm-q5">evrakplus.com · EVRAK PLUS · evrakplus.com</div>
+    </div>`;
+    const wmTop = `<div class="wm-top">EVRAK PLUS · evrakplus.com · EVRAK PLUS · evrakplus.com · Ücretsiz EvrakPlus üyeliği ile filigransız çıktı alabilirsiniz</div>`;
+    const wmFoot = `<div class="wm-foot">
+      <div class="wm-giant">EVRAK PLUS</div>
+      <div class="wm-med">EVRAK PLUS · DERS DAĞITIM PROGRAMI · WWW.EVRAKPLUS.COM</div>
+      <div class="wm-sm">EVRAK PLUS · evrakplus.com · Ücretsiz üye girişi yaptığınızda bu büyük ve küçük filigran yazıları otomatik kalkar · EVRAK PLUS</div>
+    </div>`;
+    return html
+      .replace(/<section class="doc (portrait|landscape)">/g, `<section class="doc $1 wm-on">${wmOverlay}${wmTop}`)
+      .replace(/<\/section>/g, `${wmFoot}</section>`);
+  }
+
+  function docsFor(S, tab, selId, opts) {
+    const o = EP.occ(S), wm = Boolean(opts && opts.watermark);
+    let raw = '';
+    if (tab === 'cp') raw = (selId ? S.classes.filter(c => c.id === selId) : S.classes).map(c => docClass(S, c, o)).join('');
+    else if (tab === 'tp') raw = (selId ? S.teachers.filter(t => t.id === selId) : S.teachers).map(t => docTeacher(S, t, o)).join('');
+    else if (tab === 'cs') raw = docSheet(S, 'c', o);
+    else if (tab === 'ts') raw = docSheet(S, 't', o);
+    else if (tab === 'nb') raw = docDuty(S);
+    return decorateWatermark(raw, wm);
   }
 
   function docFile(S, body, title) {
@@ -252,11 +285,13 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
 @page{size:${paper} portrait;margin:8mm}@page land{size:${paper} landscape;margin:6mm}.doc.landscape{page:land}</style></head><body>${body}</body></html>`;
   }
 
-  function csvExport(S) {
-    const D = +S.school.D, P = +S.school.P, o = EP.occ(S);
+  function csvExport(S, opts) {
+    const D = +S.school.D, P = +S.school.P, o = EP.occ(S), wm = Boolean(opts && opts.watermark);
     const q = v => '"' + String(v).replace(/"/g, '""') + '"';
     const head = ['', ...EP.GUN.slice(0, D).flatMap(g => Array.from({ length: P }, (_, p) => g + ' ' + (p + 1)))];
-    const rows = [head];
+    const rows = [];
+    if (wm) rows.push(['EVRAK PLUS · www.evrakplus.com · EVRAK PLUS (Ücretsiz üyelik ile bu satır kalkar)']);
+    rows.push(head);
     S.classes.forEach(c => {
       const G = o.cG[c.id] || {};
       rows.push([c.name, ...Array.from({ length: D * P }, (_, s) => {
@@ -272,31 +307,41 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
         return x ? EP.cName(S, x.card.classId) + ' ' + EP.SS(S, x.card.subj) : '';
       })]);
     });
+    if (wm) {
+      rows.push([]);
+      rows.push(['EVRAK PLUS', 'EVRAK PLUS', 'WWW.EVRAKPLUS.COM', 'EVRAK PLUS DERS DAĞITIM PROGRAMI']);
+    }
     return '\uFEFF' + rows.map(r => r.map(q).join(';')).join('\r\n');
   }
 
-  function excelExport(S, tab, selId) {
-    const body = docsFor(S, tab, selId);
+  function excelExport(S, tab, selId, opts) {
+    const body = docsFor(S, tab, selId, opts);
     return `\uFEFF<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><style>${DOC_CSS}</style></head><body>${body}</body></html>`;
   }
 
-  function wordExport(S, tab, selId) {
-    const body = docsFor(S, tab, selId);
+  function wordExport(S, tab, selId, opts) {
+    const body = docsFor(S, tab, selId, opts);
     return `\uFEFF<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><style>${DOC_CSS}</style></head><body>${body}</body></html>`;
   }
 
-  function pngCanvas(S, kind, id) {
+  function pngCanvas(S, kind, id, opts) {
+    const wm = Boolean(opts && opts.watermark);
     const D = +S.school.D, P = +S.school.P, o = EP.occ(S), tm = EP.times(S), SK = Object.keys(S.subjects || {});
     const e = (kind === 't' ? S.teachers : S.classes).find(x => x.id === id);
     if (!e) return null;
     const G = (kind === 't' ? o.tG : o.cG)[id] || {};
-    const W = 1080, lw = 150, top = 200, ch = Math.min(150, Math.floor(1500 / P)), Hh = top + P * ch + 90;
+    const W = 1080, lw = 150, top = 200, ch = Math.min(150, Math.floor(1500 / P)), footH = wm ? 190 : 90, Hh = top + P * ch + footH;
     const cv = document.createElement('canvas'); cv.width = W; cv.height = Hh;
     const x = cv.getContext('2d');
     x.fillStyle = '#fff'; x.fillRect(0, 0, W, Hh);
     x.fillStyle = '#d42a38'; x.fillRect(0, 0, W, 14);
-    x.fillStyle = '#14171c'; x.font = '600 46px Rubik, Arial'; x.fillText(kind === 't' ? e.name : e.name + ' sınıfı', 48, 86);
-    x.font = '26px Inter, Arial'; x.fillStyle = '#5a616c'; x.fillText(S.school.name + ' · ' + S.school.year + ' · haftalık ders programı', 48, 128);
+    if (wm) {
+      x.fillStyle = '#d42a38'; x.font = '700 18px Inter, Arial'; x.textAlign = 'center';
+      x.fillText('EVRAK PLUS · www.evrakplus.com · EVRAK PLUS · Ücretsiz üyelikle filigran kalkar', W / 2, 38);
+      x.textAlign = 'left';
+    }
+    x.fillStyle = '#14171c'; x.font = '600 46px Rubik, Arial'; x.fillText(kind === 't' ? e.name : e.name + ' sınıfı', 48, 92);
+    x.font = '26px Inter, Arial'; x.fillStyle = '#5a616c'; x.fillText(S.school.name + ' · ' + S.school.year + ' · haftalık ders programı', 48, 134);
     const cw = (W - 48 - lw - 24) / D;
     x.font = '600 24px Inter, Arial'; x.fillStyle = '#14171c';
     EP.GK.slice(0, D).forEach((g, d) => { x.textAlign = 'center'; x.fillText(EP.GUN[d], 48 + lw + d * cw + cw / 2, top - 22); });
@@ -317,8 +362,39 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
         }
       }
     }
-    x.textAlign = 'left'; x.font = '18px Inter, Arial'; x.fillStyle = '#8a9099';
-    x.fillText('EvrakPlus Ders Dağıtım Programı ile hazırlandı', 48, Hh - 34);
+    if (wm) {
+      // Her yere küçük çapraz EVRAK PLUS yazıları
+      x.save();
+      x.fillStyle = 'rgba(212, 42, 56, 0.16)';
+      x.font = '700 24px Inter, Arial';
+      x.textAlign = 'center';
+      for (let ry = top + 60; ry < Hh - footH; ry += 220) {
+        for (let rx = 200; rx < W; rx += 340) {
+          x.save(); x.translate(rx, ry); x.rotate(-0.42);
+          x.fillText('EVRAK PLUS · evrakplus.com', 0, 0);
+          x.restore();
+        }
+      }
+      // Ortada kocaman çapraz EVRAK PLUS
+      x.save(); x.translate(W / 2, top + (P * ch) / 2); x.rotate(-0.46);
+      x.fillStyle = 'rgba(212, 42, 56, 0.18)';
+      x.font = '900 124px Rubik, Arial';
+      x.fillText('EVRAK PLUS', 0, 0);
+      x.restore();
+      x.restore();
+
+      // Altta KOCAMAN EVRAK PLUS bandı
+      const by = Hh - footH + 18;
+      x.fillStyle = '#fde7e9'; x.fillRect(36, by, W - 72, 148);
+      x.fillStyle = '#d42a38'; x.fillRect(36, by, W - 72, 6); x.fillRect(36, by + 142, W - 72, 6);
+      x.textAlign = 'center';
+      x.fillStyle = '#d42a38'; x.font = '900 72px Rubik, Arial'; x.fillText('EVRAK PLUS', W / 2, by + 78);
+      x.fillStyle = '#14171c'; x.font = '700 22px Inter, Arial'; x.fillText('WWW.EVRAKPLUS.COM · EVRAK PLUS DERS DAĞITIM PROGRAMI', W / 2, by + 110);
+      x.fillStyle = '#5a616c'; x.font = '500 16px Inter, Arial'; x.fillText('EVRAK PLUS · Ücretsiz üye girişi yaparak bu filigranları kaldırabilirsiniz · EVRAK PLUS', W / 2, by + 134);
+    } else {
+      x.textAlign = 'left'; x.font = '18px Inter, Arial'; x.fillStyle = '#8a9099';
+      x.fillText('EvrakPlus Ders Dağıtım Programı ile hazırlandı', 48, Hh - 34);
+    }
     return cv;
   }
 
@@ -342,10 +418,12 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
       <tbody>${q.map(x => `<tr><td><b>${EP.esc(x.t.name)}</b><br><small class="muted">${EP.esc(x.t.branch || '')}</small></td><td class="n">${x.load}</td>${x.per.map(n => `<td class="n" style="color:${n ? 'inherit' : 'var(--mute)'}">${n}</td>`).join('')}<td class="n">${x.days}</td><td class="n" style="color:${x.gaps ? 'var(--warn)' : 'inherit'}">${x.gaps}</td><td class="n" style="color:${x.maxc >= 6 ? 'var(--warn)' : 'inherit'}">${x.maxc}</td><td class="n" style="color:${x.pv ? 'var(--err)' : 'inherit'}">${x.pv}</td></tr>`).join('')}</tbody></table></div>`;
   }
 
-  function vRapor(S, H) {
+  function vRapor(S, H, isMember) {
     const tab = (S.ui.rtab && RTABS.some(x => x[0] === S.ui.rtab)) ? S.ui.rtab : 'cp';
     const r = rep(S), o = EP.occ(S), tot = o.m.blocks.length;
-    const head = H('Raporlar ve Çıktılar', 'Okulda kullanılan resmi düzende sınıf ve öğretmen programları, çarşaf listeler, okul nöbeti ve sosyal kulüp çizelgesi. Önizleme ücretsizdir; indirme ve yazdırma ücretsiz EvrakPlus üyeliği ile açılır.',
+    const head = H('Raporlar ve Çıktılar', isMember
+      ? 'EvrakPlus üyeliğiniz aktif: tüm çıktılarınız tamamen temiz ve filigransız olarak hazırlanır.'
+      : 'Üye olmadan da tüm çıktıları alabilirsiniz (üyesiz çıktılarda EVRAK PLUS filigranı yer alır). Ücretsiz EvrakPlus girişi yaparak filigransız temiz çıktı alabilirsiniz.',
       `<button class="btn" data-act="exAllDocs">Tüm belgeler tek dosyada</button>`);
     const tabs = `<div class="tabs" style="margin-bottom:12px;display:inline-flex">${RTABS.map(x => `<button data-act="rtab" data-v="${x[0]}" class="${tab === x[0] ? 'on' : ''}">${x[1]}</button>`).join('')}</div>`;
     const sets = `<details class="card" style="margin-bottom:12px;padding:12px 16px" ${!r.mudur || !r.gecerli ? 'open' : ''}><summary>Belge bilgileri ve kağıt ayarı ${!r.mudur || !r.gecerli ? '<span class="tag" style="background:var(--warnBg);color:var(--warn)">eksik</span>' : ''}</summary>
@@ -407,7 +485,7 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
         }).join('')}</tbody></table></div></div>`;
     }
 
-    const prev = docsFor(S, tab, sel);
+    const prev = docsFor(S, tab, sel, { watermark: !isMember });
     return head + tabs + sets + `<div class="row" style="margin-bottom:12px">${ctl}</div>` + extraCard + `<div class="paperwrap">${prev}</div>`;
   }
 

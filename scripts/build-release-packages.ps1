@@ -1,7 +1,7 @@
 ﻿# EvrakPlus Ders Dagitim Multi Plus v1.0.0 — Final Release Paketleme Betigi
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
-$ver = "1.0.0"
+$ver = "2.0.0"
 $outDir = Join-Path $root "dist\release"
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 

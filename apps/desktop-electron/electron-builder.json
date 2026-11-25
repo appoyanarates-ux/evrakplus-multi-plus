@@ -82,6 +82,13 @@
       "to": "licenses"
     }
   ],
+  "publish": [
+    {
+      "provider": "github",
+      "owner": "appoyanarates-ux",
+      "repo": "evrakplus-multi-plus"
+    }
+  ],
   "win": {
     "signAndEditExecutable": false,
     "target": [

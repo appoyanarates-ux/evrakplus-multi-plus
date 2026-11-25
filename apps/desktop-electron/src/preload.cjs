@@ -6,6 +6,7 @@ const { contextBridge, ipcRenderer } = require('electron');
  */
 contextBridge.exposeInMainWorld('evrakplusBridge', Object.freeze({
   platform: 'windows-electron',
+  appVersion: '2.0.0',
   listProjects: () => ipcRenderer.invoke('project:list'),
   loadProject: id => ipcRenderer.invoke('project:load', id),
   saveProject: project => ipcRenderer.invoke('project:save', project),
@@ -15,8 +16,21 @@ contextBridge.exposeInMainWorld('evrakplusBridge', Object.freeze({
   cancelSolve: () => ipcRenderer.invoke('solver:cancel'),
   listSolutions: projectId => ipcRenderer.invoke('solver:listSolutions', projectId),
   startAuth: () => ipcRenderer.invoke('auth:openLogin'),
+  getAuthStatus: () => ipcRenderer.invoke('auth:status'),
+  logoutAuth: () => ipcRenderer.invoke('auth:logout'),
+  onAuthChanged: handler => {
+    const listener = (_event, payload) => handler(payload);
+    ipcRenderer.on('auth:changed', listener);
+    return () => ipcRenderer.removeListener('auth:changed', listener);
+  },
   getSystemInfo: () => ipcRenderer.invoke('system:info'),
   checkUpdate: () => ipcRenderer.invoke('updater:check'),
+  downloadAndInstallUpdate: info => ipcRenderer.invoke('updater:downloadAndInstall', info),
+  onUpdaterEvent: handler => {
+    const listener = (_event, payload) => handler(payload);
+    ipcRenderer.on('updater:event', listener);
+    return () => ipcRenderer.removeListener('updater:event', listener);
+  },
   onSolverProgress: handler => {
     const listener = (_event, payload) => handler(payload);
     ipcRenderer.on('solver:progress', listener);
