@@ -6,11 +6,13 @@ $outDir = Join-Path $root "dist\release"
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
 Write-Host "=== 1. HTML Preview (Tek Dosya) uretiliyor ==="
-$htmlTpl = Get-Content (Join-Path $root "packages\ui-shared\public\index.html") -Raw -Encoding UTF8
-$cssSrc = Get-Content (Join-Path $root "packages\ui-shared\public\styles.css") -Raw -Encoding UTF8
-$jsSrc = Get-Content (Join-Path $root "packages\ui-shared\public\app.js") -Raw -Encoding UTF8
-$previewHtml = $htmlTpl -replace '<link rel="stylesheet" href="\./styles\.css">', "<style>`n$cssSrc`n</style>"
-$previewHtml = $previewHtml -replace '<script type="module" src="\./app\.js"></script>', "<script type=`"module`">`n$jsSrc`n</script>"
+$uiDir = Join-Path $root "packages\ui-shared\public"
+$htmlTpl = Get-Content (Join-Path $uiDir "index.html") -Raw -Encoding UTF8
+$cssSrc = Get-Content (Join-Path $uiDir "styles.css") -Raw -Encoding UTF8
+$jsFiles = @("meb-data.js", "solver-bridge.js", "reports-doc.js", "app.js")
+$jsBundle = ($jsFiles | ForEach-Object { Get-Content (Join-Path $uiDir $_) -Raw -Encoding UTF8 }) -join "`n"
+$previewHtml = $htmlTpl.Replace('<link rel="stylesheet" href="./styles.css">', "<style>`n$cssSrc`n</style>")
+$previewHtml = [regex]::Replace($previewHtml, '<script src="\./meb-data\.js"></script>\s*<script src="\./solver-bridge\.js"></script>\s*<script src="\./reports-doc\.js"></script>\s*<script src="\./app\.js"></script>', { param($m) "<script>`n$jsBundle`n</script>" })
 Set-Content -Path (Join-Path $outDir "EvrakPlus-Multi-Plus-$ver-HTML-Preview.html") -Value $previewHtml -Encoding UTF8
 
 Write-Host "=== 2. cPanel Web ZIP uretiliyor ==="

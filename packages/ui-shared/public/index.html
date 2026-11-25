@@ -30,21 +30,22 @@
       </div>
       <nav class="menu" id="sideMenu" aria-label="Ana menü"></nav>
       <div class="sidefoot">
-        EvrakPlus Ders Dağıtım Multi Plus v1.0.0<br>
+        Veriler yerel olarak otomatik saklanır. Kalıcı yedek için <b>JSON Yedek</b> indirin.<br>
         <a href="https://www.evrakplus.com/" target="_blank" rel="noopener" style="color:inherit">evrakplus.com</a>
       </div>
     </aside>
 
     <div class="main">
+      <div id="banner"></div>
       <header class="top">
         <span class="nm" id="topSchoolName">EvrakPlus Ders Dağıtım Multi Plus</span>
         <span class="pill" id="topStatus">Hazır</span>
         <span class="pill" id="topRuntime">Tarayıcı Modu</span>
         <span class="sp"></span>
-        <button class="btn sm ghost" id="btnUndo" title="Geri al (Ctrl+Z)">Geri al</button>
-        <button class="btn sm ghost" id="btnRedo" title="Yinele (Ctrl+Y)">Yinele</button>
+        <button class="btn sm ghost" data-act="undo" id="bUndo" title="Geri al (Ctrl+Z)">Geri al</button>
+        <button class="btn sm ghost" data-act="redo" id="bRedo" title="Yinele (Ctrl+Y)">Yinele</button>
         <button class="btn sm" id="btnInstallPwa" style="display:none">Uygulamayı Yükle</button>
-        <button class="btn sm" id="btnQuickBackup">JSON Yedek</button>
+        <button class="btn sm" data-act="saveJson">JSON Yedek</button>
       </header>
       <main class="view" id="view"></main>
     </div>
@@ -59,6 +60,9 @@
   </nav>
 
   <div id="modalRoot"></div>
-  <script type="module" src="./app.js"></script>
+  <script src="./meb-data.js"></script>
+  <script src="./solver-bridge.js"></script>
+  <script src="./reports-doc.js"></script>
+  <script src="./app.js"></script>
 </body>
 </html>

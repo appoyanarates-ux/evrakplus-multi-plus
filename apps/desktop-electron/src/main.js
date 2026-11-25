@@ -22,7 +22,7 @@ export const SECURITY_CONFIG = Object.freeze({
   nodeIntegration: false,
   sandbox: true,
   webSecurity: true,
-  csp: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://www.evrakplus.com https://api.github.com; object-src 'none'; base-uri 'self';"
+  csp: "default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://www.evrakplus.com https://api.github.com; object-src 'none'; base-uri 'self';"
 });
 
 let mainWindow = null;

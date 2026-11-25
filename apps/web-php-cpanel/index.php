@@ -42,6 +42,9 @@ $csrf = ep_csrf_token();
         echo '<div id="appRoot">EvrakPlus Multi Plus yükleniyor...</div>';
     }
   ?>
-  <script type="module" src="./assets/js/app.js"></script>
+  <script src="./assets/js/meb-data.js"></script>
+  <script src="./assets/js/solver-bridge.js"></script>
+  <script src="./assets/js/reports-doc.js"></script>
+  <script src="./assets/js/app.js"></script>
 </body>
 </html>
