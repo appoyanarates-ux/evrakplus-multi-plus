@@ -15,7 +15,7 @@ async function loadMultiSolver() {
 }
 
 const { MultiSolverEngine } = await loadMultiSolver();
-const ALLOWED_EXTERNAL_HOSTS = new Set(['www.evrakplus.com', 'evrakplus.com', 'github.com']);
+const ALLOWED_EXTERNAL_HOSTS = new Set(['www.evrakplus.com', 'evrakplus.com']);
 
 export const SECURITY_CONFIG = Object.freeze({
   contextIsolation: true,
@@ -148,7 +148,7 @@ function registerIpcHandlers() {
   ipcMain.handle('updater:check', () => ({
     currentVersion: '1.0.0',
     updateAvailable: false,
-    releaseFeed: 'https://github.com/appoyanarates-ux/evrakplus-multi-plus/releases'
+    releaseFeed: 'https://www.evrakplus.com/ders-dagitim-multi-plus/'
   }));
 }
 

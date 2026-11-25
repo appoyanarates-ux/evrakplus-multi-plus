@@ -431,9 +431,7 @@
     ['rooms', 'Derslikler ve Binalar'],
     ['assignments', 'Ders Görevlendirmeleri'],
     ['constraints', 'Kural ve Kısıt Yönetimi'],
-    ['auto_schedule', 'Otomatik Ders Dağıtımı'],
-    ['multi_solver', 'Multi Solver Merkezi'],
-    ['manual_schedule', 'Manuel Ders Dağıtımı'],
+    ['auto_schedule', 'Dağıtım ve Program'],
     ['timetables', 'Haftalık Ders Programları'],
     ['analytics', 'Analiz ve İstatistikler'],
     ['reports', 'Raporlar ve Çıktılar'],
@@ -442,6 +440,87 @@
     ['system', 'Sistem ve Güncellemeler'],
     ['help', 'Yardım ve Destek']
   ];
+
+  const STAFF_ROLES = [
+    ['ogretmen', 'Öğretmen'],
+    ['mudur_yardimcisi', 'Müdür Yardımcısı (Öğretmen nöbeti tutmaz)'],
+    ['mudur', 'Okul Müdürü (Nöbet tutmaz)'],
+    ['rehber', 'Rehber Öğretmen / PDR (Nöbetten muaf)']
+  ];
+
+  /* MEB Türkiye Yüzyılı Maarif Modeli Zorunlu 8 Kulüp + 5 Ana Tema / EK-4 Sosyal Kulüpler */
+  const SOCIAL_CLUB_GROUPS = [
+    {
+      group: 'Zorunlu Temel Kulüpler (MEB — Tüm Okullarda)',
+      mandatory: true,
+      clubs: [
+        'Kızılay Kulübü',
+        'Yeşilay Kulübü',
+        'Beyazay Kulübü',
+        'Siberay Kulübü',
+        'Tarih ve Kültürel Miras Kulübü',
+        'Tabiat ve Yaşanabilir Çevre Kulübü',
+        'Sağlıklı Yaşam ve Fiziksel Aktivite Kulübü',
+        'Yaşam Becerileri Kulübü'
+      ]
+    },
+    {
+      group: 'Kültür Dünyamız',
+      clubs: [
+        'Kültür ve Edebiyat Kulübü',
+        'Kütüphanecilik Kulübü',
+        'Gezi, Tanıtma ve Turizm Kulübü',
+        'Yayın ve İletişim Kulübü',
+        'Münazara ve Hitabet Kulübü',
+        'Değerler Eğitimi Kulübü',
+        'Demokrasi, İnsan Hakları ve Yurttaşlık Kulübü',
+        'Felsefe ve Düşünce Eğitimi Kulübü',
+        'Yabancı Dil ve Uluslararası Projeler (eTwinning) Kulübü'
+      ]
+    },
+    {
+      group: 'Sanat',
+      clubs: [
+        'Müzik Kulübü',
+        'Görsel Sanatlar ve Resim Kulübü',
+        'Tiyatro ve Drama Kulübü',
+        'Fotoğrafçılık ve Sinema Kulübü',
+        'Halk Oyunları Kulübü',
+        'Geleneksel El Sanatları Kulübü'
+      ]
+    },
+    {
+      group: 'Spor',
+      clubs: [
+        'Spor Kulübü',
+        'Satranç ve Akıl-Zekâ Oyunları Kulübü',
+        'İzcilik ve Doğa Sporları Kulübü',
+        'Geleneksel Çocuk Oyunları Kulübü'
+      ]
+    },
+    {
+      group: 'Bilim ve Teknoloji',
+      clubs: [
+        'Bilim, Fen ve Teknoloji Kulübü',
+        'Bilişim, Robotik Kodlama ve Yapay Zekâ Kulübü',
+        'Matematik Kulübü',
+        'Havacılık ve Uzay Bilimleri Kulübü',
+        'Girişimcilik ve Kariyer Planlama Kulübü',
+        'Enerji Verimliliği ve İklim Değişikliği Kulübü'
+      ]
+    },
+    {
+      group: 'Doğa, Çevre ve Toplum',
+      clubs: [
+        'Afet Hazırlık ve Sivil Savunma Kulübü',
+        'Trafik Güvenliği ve İlk Yardım Kulübü',
+        'Sosyal Dayanışma ve Yardımlaşma Kulübü',
+        'Bilinçli Tüketici ve Kooperatifçilik Kulübü',
+        'Hayvanları Koruma Kulübü'
+      ]
+    }
+  ];
+  const SOCIAL_CLUBS = SOCIAL_CLUB_GROUPS.flatMap(g => g.clubs);
 
   const ENGINE_META = [
     { id: 'ortools', name: 'Google OR-Tools CP-SAT', role: 'Ana yüksek performanslı CP-SAT motoru' },
@@ -751,7 +830,7 @@
   Object.assign(EP, {
     CORE, CX, WSRC, newWorker,
     EVRAKPLUS_LOGIN_URL, EVRAKPLUS_SITE_URL,
-    GUN, GK, DONEM, MENUS, ENGINE_META, SOLVER_MODES, TIME_PRESETS, ROOM_TYPES,
+    GUN, GK, DONEM, MENUS, STAFF_ROLES, SOCIAL_CLUB_GROUPS, SOCIAL_CLUBS, ENGINE_META, SOLVER_MODES, TIME_PRESETS, ROOM_TYPES,
     SRC, GRP, TYPES, REHB, SO_SET, SHORTS, BASE_BRANS, LEGACY, LEG_SEC, TPL,
     branchOf, autoShort, trSlug
   });

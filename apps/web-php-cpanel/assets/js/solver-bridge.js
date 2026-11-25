@@ -128,7 +128,7 @@
     s.teachers = tn.map((t, i) => {
       const av = {};
       for (const d of closed[i]) for (let p = 0; p < 7; p++) av[d + '-' + p] = 1;
-      return { id: uid(), name: t[0], short: '', branch: t[1], dmin: 0, dmax: 7, cmax: 0, wmax: 30, av, extra: [], dutyD: '', dutyP: '', kulup: '' };
+      return { id: uid(), name: t[0], short: '', branch: t[1], role: 'ogretmen', dutyExempt: false, dmin: 0, dmax: 7, cmax: 0, wmax: 30, av, extra: [], dutyD: '', dutyP: '', kulup: '' };
     });
     s.teachers[2].extra = ['TKT'];
     s.teachers[3].extra = ['AVE'];
@@ -276,9 +276,12 @@
     for (const t of o.teachers || []) {
       if (!Array.isArray(t.extra)) t.extra = [];
       if (!t.av) t.av = {};
+      if (!t.role) t.role = 'ogretmen';
+      if (t.dutyExempt == null) t.dutyExempt = t.role !== 'ogretmen';
       if (t.dmax == null) t.dmax = +o.school.P || 7;
       if (t.cmax == null) t.cmax = 0;
     }
+    if (!Array.isArray(o.customClubs)) o.customClubs = [];
     for (const c of o.classes || []) {
       if (!Array.isArray(c.closed)) c.closed = [];
       if (!c.shift) c.shift = 'full';

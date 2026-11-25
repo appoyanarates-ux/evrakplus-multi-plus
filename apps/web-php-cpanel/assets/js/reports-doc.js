@@ -1,7 +1,8 @@
 /* =========================================================================
  * EvrakPlus Ders Dağıtım Multi Plus v1.0.0 — Resmi Belge Önizleme ve Çıktı Modülü
- * - Sınıf Programı, Sınıf Çarşaf, Öğretmen Programı, Öğretmen Çarşaf, Okul Nöbeti
- * - Kalite Raporu ve Multi Solver Motor Karşılaştırma Raporu
+ * - Sınıf Programı, Sınıf Çarşaf, Öğretmen Programı, Öğretmen Çarşaf
+ * - Okul Nöbeti ve MEB Sosyal Kulüpler (İdareciler öğretmen nöbetinden muaf)
+ * - Kalite Raporu
  * - Yazdırılabilir HTML/PDF, Excel (.xls), Word (.doc), Çarşaf CSV, WhatsApp PNG
  * ========================================================================= */
 (function (root) {
@@ -29,6 +30,7 @@
 .doc .g .sep{border-left:2px solid #000}.doc .duty td{height:46px;font-size:12.5px}`;
 
   const upTR = s => String(s || '').toLocaleUpperCase('tr');
+  const normTR = s => String(s || '').trim().toLocaleLowerCase('tr');
   const rep = S => Object.assign({ mudur: '', gecerli: '', sayi: '', kurum: '', myId: '', paper: 'A4' }, S.report || {}, { mudur: S.school.mudur || (S.report || {}).mudur || '' });
   const donemText = S => S.school.year + (S.school.donem && S.school.donem !== 'Yıllık' ? ' ' + S.school.donem : '');
   const myList = S => S.school.myard || [];
@@ -37,6 +39,65 @@
   const kurumAdi = S => { const r = rep(S); return r.kurum || S.school.name; };
   const dutyOf = t => ({ d: t.dutyD === '' || t.dutyD == null ? -1 : +t.dutyD, place: t.dutyP || '' });
   const dutyPlaces = S => { const d = S.duty || {}; return d.places && d.places.length ? d.places : ['Bahçe', 'Koridor']; };
+
+  /* Okul Müdürü, Müdür Yardımcıları ve muaf personel öğretmen nöbeti tutmaz */
+  function staffAdminKind(S, t) {
+    if (!t) return '';
+    if (t.role === 'mudur') return 'mudur';
+    if (t.role === 'mudur_yardimcisi') return 'mudur_yardimcisi';
+    if (t.role === 'rehber') return 'rehber';
+    const tn = normTR(t.name);
+    if (tn && S.school.mudur && normTR(S.school.mudur) === tn) return 'mudur';
+    if (tn && myList(S).some(m => m.name && normTR(m.name) === tn)) return 'mudur_yardimcisi';
+    return '';
+  }
+
+  function isDutyExempt(S, t) {
+    if (!t) return true;
+    if (t.dutyExempt) return true;
+    const ak = staffAdminKind(S, t);
+    return ak === 'mudur' || ak === 'mudur_yardimcisi' || ak === 'rehber';
+  }
+
+  function dutyExemptReason(S, t) {
+    const ak = staffAdminKind(S, t);
+    if (ak === 'mudur') return 'Okul Müdürü (Nöbet tutmaz)';
+    if (ak === 'mudur_yardimcisi') return 'Müdür Yardımcısı (Nöbetçi İdareci)';
+    if (ak === 'rehber') return 'Rehber Öğretmen (Muaf)';
+    if (t && t.dutyExempt) return 'Nöbetten muaf';
+    return '';
+  }
+
+  /* MEB Resmi Sosyal Kulüpler + Okulun Eklediği Kulüpler Seçenekleri */
+  function clubOptions(S, selected) {
+    const custom = Array.isArray(S.customClubs) ? S.customClubs.filter(Boolean) : [];
+    const allKnown = new Set([...(EP.SOCIAL_CLUBS || []), ...custom]);
+    let h = `<option value="">— Kulüp seçilmedi —</option>`;
+    if (selected && !allKnown.has(selected)) {
+      h += `<option value="${EP.esc(selected)}" selected>${EP.esc(selected)} (Özel)</option>`;
+    }
+    for (const g of (EP.SOCIAL_CLUB_GROUPS || [])) {
+      h += `<optgroup label="${EP.esc(g.group)}">${g.clubs.map(c => `<option value="${EP.esc(c)}" ${selected === c ? 'selected' : ''}>${EP.esc(c)}</option>`).join('')}</optgroup>`;
+    }
+    if (custom.length) {
+      h += `<optgroup label="Okulun Eklediği Kulüpler">${custom.map(c => `<option value="${EP.esc(c)}" ${selected === c ? 'selected' : ''}>${EP.esc(c)}</option>`).join('')}</optgroup>`;
+    }
+    return h;
+  }
+
+  function clubAuto(S) {
+    const pool = [...(EP.SOCIAL_CLUBS || []), ...(S.customClubs || [])];
+    const used = new Set(S.teachers.map(t => t.kulup).filter(Boolean));
+    let n = 0;
+    for (const t of S.teachers) {
+      const ak = staffAdminKind(S, t);
+      if (ak === 'mudur' || ak === 'mudur_yardimcisi') continue;
+      if (t.kulup) continue;
+      const pick = pool.find(c => !used.has(c)) || pool[n % pool.length];
+      if (pick) { t.kulup = pick; used.add(pick); n++; }
+    }
+    return n;
+  }
 
   function sigL(S) {
     const r = rep(S), m = myList(S).find(x => x.id === r.myId);
@@ -87,11 +148,13 @@
     const D = +S.school.D, P = +S.school.P, G = o.tG[t.id] || {}, r = rep(S);
     const cards = S.cards.filter(x => x.teacherId === t.id).sort((a, b) => EP.cName(S, a.classId).localeCompare(EP.cName(S, b.classId), 'tr') || EP.SS(S, a.subj).localeCompare(EP.SS(S, b.subj), 'tr'));
     const tot = cards.reduce((a, x) => a + (+x.hours || 0), 0);
+    const exempt = isDutyExempt(S, t);
     const du = dutyOf(t), rh = S.classes.filter(c => EP.rehberOf(S, c) === t.id).map(c => c.name).join(', ');
+    const dutyTxt = exempt ? dutyExemptReason(S, t) : (du.d >= 0 ? upTR(EP.GUN[du.d]) + (du.place ? ' / ' + du.place : '') : '-');
     const fT = cell => `<b>${EP.esc(EP.cName(S, cell.card.classId))}</b><span>${EP.esc(EP.SS(S, cell.card.subj))}</span>`;
     return `<section class="doc portrait"><div class="ttl">${EP.esc(upTR(kurumAdi(S)))} MÜDÜRLÜĞÜ</div>
       <div class="meta"><div><span>Sayı</span><span>: ${EP.esc(r.sayi)}</span></div><div><span>Öğretmen</span><span>: ${EP.esc(upTR(t.name))}</span></div><div><span>Dönem</span><span>: ${EP.esc(donemText(S))}</span></div><div><span>Toplam Saat</span><span>: ${tot}</span></div></div>
-      <div class="meta2"><span>Nöbet Günü: ${du.d >= 0 ? EP.esc(upTR(EP.GUN[du.d])) : '-'}${du.place ? ' / ' + EP.esc(du.place) : ''}</span><span>Sınıf Rehberliği: ${EP.esc(rh || '-')}</span><span>Sosyal Kulüp: ${EP.esc(t.kulup || '-')}</span></div>
+      <div class="meta2"><span>Nöbet: ${EP.esc(dutyTxt)}</span><span>Sınıf Rehberliği: ${EP.esc(rh || '-')}</span><span>Sosyal Kulüp: ${EP.esc(t.kulup || '-')}</span></div>
       <table class="g"><colgroup><col style="width:96px"></colgroup><thead><tr><th></th>${timeHead(S, P)}</tr></thead><tbody>${EP.GUN.slice(0, D).map((g, d) => `<tr><td class="day">${g}</td>${rowCells(G, d, P, fT)}</tr>`).join('')}</tbody></table>
       <div class="lt">Ders Listesi:</div><table class="l"><thead><tr><th style="width:26px">S</th><th style="width:62px">Ders</th><th>Ders Adı</th><th>Sınıflar</th><th style="width:70px">Yerleşim</th><th style="width:36px">Saat</th></tr></thead><tbody>${cards.map((x, i) => `<tr><td class="c">${i + 1}</td><td>${EP.esc(EP.SS(S, x.subj))}</td><td class="c">${EP.esc(EP.SN(S, x.subj))}</td><td class="c">${EP.esc(EP.cName(S, x.classId))}</td><td class="c">${EP.esc(x.pattern)}</td><td class="c">${x.hours}</td></tr>`).join('')}</tbody></table>
       <p style="margin-top:10px">Yukarıdaki dersler ${fmtD(r.gecerli)} tarihinden itibaren uygulanacaktır. Bilgilerinizi rica ederim.</p>
@@ -112,15 +175,15 @@
 
   function docDuty(S) {
     const D = +S.school.D, r = rep(S), pl = dutyPlaces(S), adm = (S.duty && S.duty.admin) || {};
-    const ts = S.teachers.filter(t => dutyOf(t).d >= 0);
+    const ts = S.teachers.filter(t => !isDutyExempt(S, t) && dutyOf(t).d >= 0);
     const cell = (d, p) => ts.filter(t => dutyOf(t).d === d && (dutyOf(t).place || pl[0]) === p).map(t => EP.esc(upTR(t.name))).join('<br>');
-    return `<section class="doc portrait"><div class="ttl">${EP.esc(upTR(kurumAdi(S)))} MÜDÜRLÜĞÜ<br>${EP.esc(S.school.year)} EĞİTİM ÖĞRETİM YILI ${S.school.donem && S.school.donem !== 'Yıllık' ? EP.esc(upTR(S.school.donem)) + ' ' : ''}ÖĞRETMEN NÖBET ÇİZELGESİ</div>
+    return `<section class="doc portrait"><div class="ttl">${EP.esc(upTR(kurumAdi(S)))} MÜDÜRLÜĞÜ<br>${EP.esc(S.school.year)} EĞİTİM ÖĞRETİM YILI ${S.school.donem && S.school.donem !== 'Yıllık' ? EP.esc(upTR(S.school.donem)) + ' ' : ''}ÖĞRETMEN NÖBET VE SOSYAL KULÜP ÇİZELGESİ</div>
       <table class="g duty"><thead><tr><th style="width:96px"><b>Gün</b></th>${pl.map(p => `<th><b>${EP.esc(p)}</b></th>`).join('')}<th><b>Nöbetçi İdareci</b></th></tr></thead><tbody>${EP.GUN.slice(0, D).map((g, d) => `<tr><td class="day">${g}</td>${pl.map(p => `<td>${cell(d, p)}</td>`).join('')}<td>${EP.esc(adm[d] || '')}</td></tr>`).join('')}</tbody></table>
-      <div class="lt">Öğretmen Listesi:</div><table class="l"><thead><tr><th style="width:26px">S</th><th>Öğretmen</th><th>Branş</th><th>Nöbet Günü</th><th>Nöbet Yeri</th></tr></thead><tbody>${S.teachers.map((t, i) => {
-        const du = dutyOf(t);
-        return `<tr><td class="c">${i + 1}</td><td>${EP.esc(upTR(t.name))}</td><td>${EP.esc(t.branch || '')}</td><td class="c">${du.d >= 0 ? EP.GUN[du.d] : '-'}</td><td class="c">${du.d >= 0 ? EP.esc(du.place || pl[0]) : '-'}</td></tr>`;
+      <div class="lt">Öğretmen Nöbet ve Sosyal Kulüp Listesi:</div><table class="l"><thead><tr><th style="width:26px">S</th><th>Adı Soyadı</th><th>Branş</th><th>Nöbet Günü</th><th>Nöbet Yeri</th><th>Sosyal Kulüp</th></tr></thead><tbody>${S.teachers.map((t, i) => {
+        const exempt = isDutyExempt(S, t), du = dutyOf(t);
+        return `<tr><td class="c">${i + 1}</td><td>${EP.esc(upTR(t.name))}</td><td>${EP.esc(t.branch || '')}</td><td class="c">${exempt ? EP.esc(dutyExemptReason(S, t)) : (du.d >= 0 ? EP.GUN[du.d] : '-')}</td><td class="c">${exempt ? '-' : (du.d >= 0 ? EP.esc(du.place || pl[0]) : '-')}</td><td>${EP.esc(t.kulup || '-')}</td></tr>`;
       }).join('')}</tbody></table>
-      <p class="note">Nöbet çizelgesi ${fmtD(r.gecerli)} tarihinden itibaren geçerlidir. Nöbetçi öğretmenler, görev yerlerinde ilk ders zilinden önce hazır bulunur.</p><div class="sig">${sigL(S)}${sigR(S)}</div></section>`;
+      <p class="note">Nöbet çizelgesi ${fmtD(r.gecerli)} tarihinden itibaren geçerlidir. Okul müdürü ve müdür yardımcıları öğretmen nöbet yerlerinde görevlendirilmez; müdür yardımcıları nöbetçi idareci olarak görev yapar.</p><div class="sig">${sigL(S)}${sigR(S)}</div></section>`;
   }
 
   function dutyAuto(S) {
@@ -131,12 +194,21 @@
       for (const k in G) { const d = +k.split('-')[0]; if (d < D) a[d]++; }
       return a;
     };
-    const list = S.teachers.map(t => {
+
+    // 1) İdareciler ve muaf öğretmenler öğretmen nöbetinden çıkarılır
+    for (const t of S.teachers) {
+      if (isDutyExempt(S, t)) { t.dutyD = ''; t.dutyP = ''; }
+    }
+
+    // 2) Yalnızca nöbet tutacak öğretmenlere nöbet günü ve yeri dağıtılır
+    const eligible = S.teachers.filter(t => !isDutyExempt(S, t));
+    const list = eligible.map(t => {
       const a = per(t);
       const open = Array.from({ length: D }, (_, d) => Array.from({ length: +S.school.P }, (_, p) => (t.av || {})[d + '-' + p] !== 1).some(Boolean));
       const days = [...Array(D).keys()].filter(d => a[d] > 0);
       return { t, a, days: days.length ? days : [...Array(D).keys()].filter(d => open[d]) };
     }).filter(x => x.days.length).sort((x, y) => x.days.length - y.days.length);
+
     let n = 0;
     for (const x of list) {
       const dt = x.days.reduce((b, d) => {
@@ -148,6 +220,17 @@
       x.t.dutyD = String(dt);
       x.t.dutyP = pl[pi];
       n++;
+    }
+
+    // 3) Müdür yardımcıları yalnızca "Nöbetçi İdareci" sütununa dengeli dağıtılır (Okul Müdürü eklenmez)
+    const vps = [...new Set([
+      ...myList(S).map(m => (m.name || '').trim()).filter(Boolean),
+      ...S.teachers.filter(t => t.role === 'mudur_yardimcisi').map(t => (t.name || '').trim()).filter(Boolean)
+    ])];
+    if (vps.length) {
+      S.duty = S.duty || { places: pl, admin: {} };
+      S.duty.admin = S.duty.admin || {};
+      for (let d = 0; d < D; d++) S.duty.admin[d] = vps[d % vps.length];
     }
     return n;
   }
@@ -235,13 +318,13 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
       }
     }
     x.textAlign = 'left'; x.font = '18px Inter, Arial'; x.fillStyle = '#8a9099';
-    x.fillText('EvrakPlus Ders Dağıtım Multi Plus v1.0.0 ile hazırlandı', 48, Hh - 34);
+    x.fillText('EvrakPlus Ders Dağıtım Programı ile hazırlandı', 48, Hh - 34);
     return cv;
   }
 
   const RTABS = [
     ['cp', 'Sınıf Programı'], ['cs', 'Sınıf Çarşaf'], ['tp', 'Öğretmen Programı'],
-    ['ts', 'Öğretmen Çarşaf'], ['nb', 'Okul Nöbeti'], ['kq', 'Kalite Raporu'], ['mc', 'Motor Karşılaştırma']
+    ['ts', 'Öğretmen Çarşaf'], ['nb', 'Okul Nöbeti ve Sosyal Kulüpler'], ['kq', 'Kalite Raporu']
   ];
 
   function vQuality(S, o, tot) {
@@ -259,26 +342,10 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
       <tbody>${q.map(x => `<tr><td><b>${EP.esc(x.t.name)}</b><br><small class="muted">${EP.esc(x.t.branch || '')}</small></td><td class="n">${x.load}</td>${x.per.map(n => `<td class="n" style="color:${n ? 'inherit' : 'var(--mute)'}">${n}</td>`).join('')}<td class="n">${x.days}</td><td class="n" style="color:${x.gaps ? 'var(--warn)' : 'inherit'}">${x.gaps}</td><td class="n" style="color:${x.maxc >= 6 ? 'var(--warn)' : 'inherit'}">${x.maxc}</td><td class="n" style="color:${x.pv ? 'var(--err)' : 'inherit'}">${x.pv}</td></tr>`).join('')}</tbody></table></div>`;
   }
 
-  function vEngineCompare(S) {
-    const sols = S.solutions || [];
-    if (!sols.length) return `<div class="empty">Henüz kaydedilmiş Multi Solver motor karşılaştırması yok. Otomatik Dağıtım veya Multi Solver Merkezi üzerinden çözüm çalıştırın.</div>`;
-    return `<div class="card scroll"><h2 style="margin-bottom:8px">Motor Karşılaştırma Raporu</h2>
-      <table class="tbl"><thead><tr><th>Motor</th><th>Durum</th><th class="n">Yerleşen</th><th class="n">Sert İhlal</th><th class="n">Kalite Puanı</th><th class="n">Süre</th><th>Açıklama / Arka Uç</th><th></th></tr></thead>
-      <tbody>${sols.map((s, idx) => `<tr>
-        <td><b>${EP.esc(s.engineName || s.engine)}</b></td>
-        <td><span class="pill ${s.isHardValid ? 'ok' : 'err'}">${EP.esc(s.status || '-')}</span></td>
-        <td class="n">${s.assignedBlocks || 0}/${s.totalBlocks || 0}</td>
-        <td class="n" style="color:${s.hardViolations ? 'var(--err)' : 'var(--ok)'}">${s.hardViolations || 0}</td>
-        <td class="n"><b>${s.qualityScore ?? 0}/100</b></td>
-        <td class="n">${s.elapsedMs ? (s.elapsedMs / 1000).toFixed(2) + ' sn' : '—'}</td>
-        <td class="small muted">${EP.esc(s.backendDisclosure || s.note || '—')}</td>
-        <td style="text-align:right">${s.placements ? `<button class="btn sm" data-act="applySol" data-i="${idx}">Programa uygula</button>` : ''}</td>
-      </tr>`).join('')}</tbody></table></div>`;
-  }
-
   function vRapor(S, H) {
-    const tab = S.ui.rtab || 'cp', r = rep(S), o = EP.occ(S), tot = o.m.blocks.length;
-    const head = H('Raporlar ve Çıktılar', 'Okulda kullanılan resmi düzende sınıf ve öğretmen programları, çarşaf listeler ve nöbet çizelgesi. Önizleme ücretsizdir; PDF/HTML, Excel, Word, PNG ve toplu dışa aktarımlar ücretsiz EvrakPlus üyeliği ile açılır.',
+    const tab = (S.ui.rtab && RTABS.some(x => x[0] === S.ui.rtab)) ? S.ui.rtab : 'cp';
+    const r = rep(S), o = EP.occ(S), tot = o.m.blocks.length;
+    const head = H('Raporlar ve Çıktılar', 'Okulda kullanılan resmi düzende sınıf ve öğretmen programları, çarşaf listeler, okul nöbeti ve sosyal kulüp çizelgesi. Önizleme ücretsizdir; indirme ve yazdırma ücretsiz EvrakPlus üyeliği ile açılır.',
       `<button class="btn" data-act="exAllDocs">Tüm belgeler tek dosyada</button>`);
     const tabs = `<div class="tabs" style="margin-bottom:12px;display:inline-flex">${RTABS.map(x => `<button data-act="rtab" data-v="${x[0]}" class="${tab === x[0] ? 'on' : ''}">${x[1]}</button>`).join('')}</div>`;
     const sets = `<details class="card" style="margin-bottom:12px;padding:12px 16px" ${!r.mudur || !r.gecerli ? 'open' : ''}><summary>Belge bilgileri ve kağıt ayarı ${!r.mudur || !r.gecerli ? '<span class="tag" style="background:var(--warnBg);color:var(--warn)">eksik</span>' : ''}</summary>
@@ -292,7 +359,6 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
       </div></details>`;
 
     if (tab === 'kq') return head + tabs + vQuality(S, o, tot);
-    if (tab === 'mc') return head + tabs + vEngineCompare(S);
     if (!tot && tab !== 'nb') return head + tabs + sets + '<div class="empty">Önce ders ekleyip dağıtım yapın.</div>';
 
     let ctl = '', sel = '', extraCard = '';
@@ -311,24 +377,33 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
         <button class="btn" data-act="exCsv">Çarşaf tablosu (.csv)</button>`;
     } else if (tab === 'nb') {
       const pl = dutyPlaces(S), adm = (S.duty && S.duty.admin) || {}, D = +S.school.D;
+      const vpNames = [...new Set([...myList(S).map(m => m.name), ...S.teachers.filter(t => t.role === 'mudur_yardimcisi').map(t => t.name)].filter(Boolean))];
       ctl = `<button class="btn pri" data-act="exDoc">Yazdır / PDF (.html)</button>
         <button class="btn" data-act="exWord">Word (.doc)</button>
         <button class="btn" data-act="dutyAuto">Nöbetleri otomatik dağıt</button>
+        <button class="btn" data-act="clubAuto">Sosyal kulüpleri dağıt</button>
         <button class="btn ghost" data-act="dutyClear">Nöbetleri temizle</button>`;
-      extraCard = `<div class="card" style="margin:12px 0"><h2>Nöbet düzenle</h2>
-        <p class="small muted" style="margin:4px 0 10px">Otomatik dağıtım öğretmeni dersinin olduğu ve en az nöbetçi bulunan güne, o günün en boş yerine koyar. İstediğiniz satırı elle değiştirebilirsiniz.</p>
-        <div class="fields"><datalist id="mylist">${[S.school.mudur, ...myList(S).map(m => m.name)].filter(Boolean).map(n => `<option value="${EP.esc(n)}">`).join('')}</datalist>
+      extraCard = `<div class="card" style="margin:12px 0"><h2>Nöbet ve Sosyal Kulüp Düzenleme</h2>
+        <div class="msg info" style="margin:8px 0 12px"><span class="ic">i</span><div><b>İdareci nöbet kuralı:</b> Okul müdürü ve müdür yardımcıları öğretmenler gibi bahçe/koridor nöbeti tutmaz. Müdür yardımcıları yalnızca <b>Nöbetçi İdareci</b> sütununa atanır; nöbet muafiyeti olan öğretmenler de işaretlenebilir.</div><span></span></div>
+        <div class="fields"><datalist id="mylist">${vpNames.map(n => `<option value="${EP.esc(n)}">`).join('')}</datalist>
           <label class="f" style="grid-column:1/-1">Nöbet yerleri (virgülle)<input data-dplaces="1" value="${EP.esc(pl.join(', '))}"></label>
-          ${EP.GUN.slice(0, D).map((g, d) => `<label class="f">${g} nöbetçi idareci<input list="mylist" data-dadmin="${d}" value="${EP.esc(adm[d] || '')}"></label>`).join('')}
+          ${EP.GUN.slice(0, D).map((g, d) => `<label class="f">${g} nöbetçi idareci<input list="mylist" data-dadmin="${d}" value="${EP.esc(adm[d] || '')}" placeholder="Müdür Yardımcısı"></label>`).join('')}
         </div>
-        <div class="scroll" style="margin-top:12px"><table class="tbl"><thead><tr><th>Öğretmen</th><th>Nöbet günü</th><th>Nöbet yeri</th><th>Sınıf rehberliği</th><th>Sosyal kulüp</th></tr></thead><tbody>
+        <div class="row" style="margin-top:12px;gap:8px;align-items:flex-end">
+          <label class="f" style="flex:1;min-width:220px">Okula özel sosyal kulüp ekle<input id="newClubName" placeholder="ör. Robotik ve Kodlama Kulübü"></label>
+          <button class="btn sm" data-act="addClub">Kulüp ekle</button>
+        </div>
+        <div class="scroll" style="margin-top:12px"><table class="tbl"><thead><tr><th>Öğretmen / İdareci</th><th>Nöbet Muafiyeti</th><th>Nöbet günü</th><th>Nöbet yeri</th><th>Sınıf rehberliği</th><th>Sosyal kulüp (MEB Listesi)</th></tr></thead><tbody>
         ${S.teachers.map(t => {
-          const du = dutyOf(t);
-          return `<tr><td>${EP.esc(t.name)}<br><small class="muted">${EP.esc(t.branch || '')}</small></td>
-            <td><select data-t="${t.id}" data-f="dutyD" aria-label="Nöbet günü"><option value="">—</option>${EP.GUN.slice(0, D).map((g, d) => `<option value="${d}" ${du.d === d ? 'selected' : ''}>${g}</option>`).join('')}</select></td>
-            <td><select data-t="${t.id}" data-f="dutyP" aria-label="Nöbet yeri">${pl.map(p => `<option ${(du.place || pl[0]) === p ? 'selected' : ''}>${EP.esc(p)}</option>`).join('')}</select></td>
+          const du = dutyOf(t), ak = staffAdminKind(S, t), exempt = isDutyExempt(S, t);
+          return `<tr>
+            <td><b>${EP.esc(t.name)}</b><br><small class="muted">${EP.esc(t.branch || '')}${ak ? ' · ' + EP.esc(dutyExemptReason(S, t)) : ''}</small></td>
+            <td><label class="row small" style="gap:6px;white-space:nowrap"><input type="checkbox" data-t="${t.id}" data-f="dutyExempt" ${exempt ? 'checked' : ''} ${ak ? 'disabled title="İdareci ve rehber öğretmenler otomatik muaftır"' : ''}> ${exempt ? 'Muaf' : 'Nöbet tutar'}</label></td>
+            <td>${exempt ? `<span class="small muted">${EP.esc(dutyExemptReason(S, t))}</span>` : `<select data-t="${t.id}" data-f="dutyD" aria-label="Nöbet günü"><option value="">—</option>${EP.GUN.slice(0, D).map((g, d) => `<option value="${d}" ${du.d === d ? 'selected' : ''}>${g}</option>`).join('')}</select>`}</td>
+            <td>${exempt ? '<span class="small muted">—</span>' : `<select data-t="${t.id}" data-f="dutyP" aria-label="Nöbet yeri">${pl.map(p => `<option ${(du.place || pl[0]) === p ? 'selected' : ''}>${EP.esc(p)}</option>`).join('')}</select>`}</td>
             <td class="small">${EP.esc(S.classes.filter(c => EP.rehberOf(S, c) === t.id).map(c => c.name).join(', ') || '-')}</td>
-            <td><input data-t="${t.id}" data-f="kulup" value="${EP.esc(t.kulup || '')}" style="min-width:140px" aria-label="Sosyal kulüp"></td></tr>`;
+            <td><select data-t="${t.id}" data-f="kulup" style="max-width:260px" aria-label="Sosyal kulüp">${clubOptions(S, t.kulup || '')}</select></td>
+          </tr>`;
         }).join('')}</tbody></table></div></div>`;
     }
 
@@ -338,7 +413,8 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
 
   Object.assign(EP, {
     DOC_CSS, RTABS, rep, donemText, myList, dutyOf, dutyPlaces,
+    staffAdminKind, isDutyExempt, dutyExemptReason, clubOptions, clubAuto,
     docClass, docTeacher, docSheet, docDuty, dutyAuto, docsFor, docFile,
-    csvExport, excelExport, wordExport, pngCanvas, vQuality, vEngineCompare, vRapor
+    csvExport, excelExport, wordExport, pngCanvas, vQuality, vRapor
   });
 })(typeof window !== 'undefined' ? window : globalThis);
