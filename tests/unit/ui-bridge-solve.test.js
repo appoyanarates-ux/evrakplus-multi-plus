@@ -115,11 +115,21 @@ test('MEB social clubs, admin duty exemption, simplified menus & zero GitHub lin
   assert.equal(st.teachers[0].kulup, '', 'Okul Müdürü should not be auto-assigned a club');
   assert.ok(EP.SOCIAL_CLUBS.includes(st.teachers[3].kulup));
 
-  // 4. Redundant menus 10 & 11 removed, rooms moved inside school settings, zero GitHub links in UI files
+  // 4. Redundant menus 10 & 11 removed, rooms moved inside school settings, dedicated duty menu present, zero GitHub links in UI files
   const menuIds = EP.MENUS.map(m => m[0]);
   assert.ok(!menuIds.includes('multi_solver'));
   assert.ok(!menuIds.includes('manual_schedule'));
   assert.ok(!menuIds.includes('rooms'), 'Derslikler ve Binalar must live inside Okul Ayarları');
+  assert.ok(menuIds.includes('duty'), 'Dedicated Okul Nöbeti menu must exist');
+  assert.ok(Array.isArray(EP.VIVID_PALETTE) && EP.VIVID_PALETTE.length >= 30, 'Vivid color palette must have >= 30 distinct colors');
+
+  // 4c. Monthly duty generation & schedule-aware strategies
+  const mRows = EP.buildMonthlyDuty(st, '2026-11', 'rotate');
+  assert.ok(mRows.length >= 20, 'November 2026 must generate >= 20 school duty days');
+  const mDocClean = EP.docMonthlyDuty(st, '2026-11', { watermark: false });
+  const mDocWm = EP.docMonthlyDuty(st, '2026-11', { watermark: true });
+  assert.ok(mDocClean.includes('KASIM 2026 AYI ÖĞRETMEN NÖBET ÇİZELGESİ') && !mDocClean.includes('wm-giant'));
+  assert.ok(mDocWm.includes('wm-giant') && mDocWm.includes('EVRAK PLUS'));
 
   // 4b. Duplicate course assignment to the same class must be blocked
   const cls0 = st.classes[0];

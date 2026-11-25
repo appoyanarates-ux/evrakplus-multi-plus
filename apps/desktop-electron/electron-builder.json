@@ -104,8 +104,7 @@
     "icon": "build/icon.ico",
     "signAndEditExecutable": false,
     "target": [
-      { "target": "nsis", "arch": ["x64"] },
-      { "target": "portable", "arch": ["x64"] }
+      { "target": "nsis", "arch": ["x64"] }
     ],
     "artifactName": "DersMatrix-Ultimate-${version}-${target}.${ext}"
   },
@@ -120,8 +119,5 @@
     "uninstallerIcon": "build/icon.ico",
     "installerHeaderIcon": "build/icon.ico",
     "artifactName": "DersMatrix-Ultimate-${version}-Setup.${ext}"
-  },
-  "portable": {
-    "artifactName": "DersMatrix-Ultimate-${version}-Portable.${ext}"
   }
 }

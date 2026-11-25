@@ -39,8 +39,11 @@
   let engineHealth = [];
   let sysInfo = null;
   let authUser = null; // null = ücretsiz yerel kullanım (üyelik çıkışı kilitli)
+  let bulkMode = false;
+  const bulkSel = new Set();
+  let nativeStopMode = null; // null | 'stop' | 'maxFinish'
 
-  /* ---------- Dinamik Ders Renkleri ---------- */
+  /* ---------- Canlı ve Birbirinden Belirgin Ders Renkleri ---------- */
   let SK = [];
   let BRANS = [];
   let colorN = -1;
@@ -56,9 +59,14 @@
     ])];
     if (SK.length !== colorN) {
       colorN = SK.length;
+      const pal = EP.VIVID_PALETTE || [];
       colorStyle.textContent = SK.map((k, i) => {
-        const h = Math.round((i * 137.5 + 18) % 360);
-        return `.c${i}{background:light-dark(hsl(${h} 78% 86%),hsl(${h} 36% 29%))!important}`;
+        if (i < pal.length) {
+          const [lbg, lbd, dbg, dbd] = pal[i];
+          return `.c${i}{background:light-dark(${lbg},${dbg})!important;border-left-color:light-dark(${lbd},${dbd})!important;color:light-dark(#0f172a,#f8fafc)!important}`;
+        }
+        const h = Math.round(((i - pal.length) * 137.508 + 24) % 360);
+        return `.c${i}{background:light-dark(hsl(${h} 92% 76%),hsl(${h} 58% 30%))!important;border-left-color:light-dark(hsl(${h} 85% 42%),hsl(${h} 82% 66%))!important;color:light-dark(#0f172a,#f8fafc)!important}`;
       }).join('');
     }
   }
@@ -171,7 +179,7 @@
     $('#mX').addEventListener('click', () => { M.innerHTML = ''; });
   }
 
-  const APP_VER = (bridge && bridge.appVersion) || '2.1.0';
+  const APP_VER = (bridge && bridge.appVersion) || '2.2.0';
   let updateInfo = null;
   let updateProgress = null;
   const isMember = () => Boolean(authUser && (authUser.loggedIn || authUser.entitlementValid));
@@ -1339,6 +1347,7 @@
       act += ` data-id="${cell.id}" data-k="${cell.k}"${!cell.lock && !running ? ' draggable="true"' : ''}`;
       if (ed && sel === cell.id) cls += ' sel';
       if (ed && cell.k === 0 && ed.sw.has(cell.id)) cls += ' swp';
+      if (bulkSel.has(cell.id)) cls += ' bsel';
     } else if (closed) cls += ' closed';
     if (ed && ed.tg.has(s) && !cell) cls += ' tgt';
     if (pref && !closed) cls += ' pref';
@@ -1374,6 +1383,7 @@
             act += ` data-id="${cell.id}" data-k="${cell.k}"${!cell.lock && !running ? ' draggable="true"' : ''}`;
             if (sel === cell.id) cls += ' sel';
             if (ed && e.id === relId && cell.k === 0 && ed.sw.has(cell.id)) cls += ' swp';
+            if (bulkSel.has(cell.id)) cls += ' bsel';
           } else if (closed) cls += ' closed';
           if (ed && e.id === relId && !cell && ed.tg.has(s)) cls += ' tgt';
           if (pref && !closed && !cell) cls += ' pref';
@@ -1383,7 +1393,7 @@
   }
 
   function selPanel(o, ed) {
-    if (!ed) return `<div class="card"><h3>Elle düzenleme</h3><p class="small muted" style="margin-top:6px">Hücreye tıklayın: kilitleme, öğretmen değiştirme, çıkarma ve silme; boş hücreye sağ tıklayın: o sınıfın derslerini blok seçerek ekleme. Sürükle-bırak da çalışır.</p></div>`;
+    if (!ed) return `<div class="card"><h3>Elle düzenleme &amp; Kilitleme</h3><p class="small muted" style="margin-top:6px"><b>Çift tık:</b> dersi anında kilitle / kilidi aç.<br><b>Sol tık:</b> işlem menüsü · <b>Sağ tık (boş hücre):</b> ders ekle · <b>Ctrl+Tık / Toplu Kilit Seçimi:</b> birden fazla dersi seçip topluca kilitle veya aç · <b>Sürükle-bırak</b> ile taşı.</p></div>`;
     const cd = EP.cardMap(S).get(sel.split(':')[0]), t = S.teachers.find(x => x.id === cd.teacherId), pl = S.place[sel], b = ed.m.blocks[ed.i];
     return `<div class="card"><span class="tag ${colorOf(cd.subj)}">${esc(SS(cd.subj))}</span><h3 style="margin-top:8px">${esc(SN(cd.subj))}</h3>
       <p class="small muted" style="margin:4px 0 10px">${esc(cName(cd.classId))} · ${esc(tName(t))} · ${b.len} saatlik blok<br>${pl ? GUN[pl.d] + ', ' + (pl.p + 1) + '. ders' : 'Yerleşmemiş'} · ${ed.tg.size} boş yer, ${ed.sw.size} yer değiştirme</p>
@@ -1413,18 +1423,42 @@
     const viewList = [['sinif', 'Sınıf'], ['ogr', 'Öğretmen'], ['csh', 'Sınıf çarşafı'], ['tsh', 'Öğretmen çarşafı']];
     if (includeRoom) viewList.push(['room', 'Derslik']);
     const tabs = `<div class="row" style="justify-content:space-between;margin-bottom:12px"><div class="tabs">${viewList.map(t => `<button data-act="view" data-v="${t[0]}" class="${v === t[0] ? 'on' : ''}">${t[1]}</button>`).join('')}</div>
-      ${v === 'sinif' || v === 'ogr' || v === 'room' ? `<select data-ui="ent">${ents.map(e => `<option value="${e.id}" ${e.id === ent.id ? 'selected' : ''}>${esc(e.name)}</option>`).join('')}</select>` : ''}</div>`;
+      <div class="row">
+        ${v === 'sinif' || v === 'ogr' || v === 'room' ? `<select data-ui="ent">${ents.map(e => `<option value="${e.id}" ${e.id === ent.id ? 'selected' : ''}>${esc(e.name)}</option>`).join('')}</select>` : ''}
+        <button class="btn sm ${bulkMode || bulkSel.size ? 'pri' : ''}" data-act="toggleBulkLock" title="Kilitli veya açık dersleri seçip topluca kilitleyin/açın">${bulkMode ? '✓ Toplu Kilit Seçimi Açık' : 'Toplu Kilit Seçimi'}${bulkSel.size ? ` (${bulkSel.size})` : ''}</button>
+      </div></div>`;
+    let bulkBar = '';
+    if (bulkMode || bulkSel.size > 0) {
+      const selIds = [...bulkSel].filter(id => Boolean(S.place[id]));
+      const lkCnt = selIds.filter(id => S.place[id].lock).length;
+      const ulCnt = selIds.length - lkCnt;
+      bulkBar = `<div class="bulk-bar">
+        <span class="small"><b>Toplu Kilit Seçimi:</b> ${selIds.length} ders seçili (${lkCnt} kilitli · ${ulCnt} açık) — tablodan derslere tıklayarak seçin.</span>
+        <div class="row" style="gap:6px">
+          <button class="btn sm pri" data-act="bulkToggleSel" ${selIds.length ? '' : 'disabled'} title="Seçili kilitlileri açar, açıkları kilitler">Seçilenleri Tersine Çevir (Kilitli↔Açık)</button>
+          <button class="btn sm" data-act="bulkLockSel" data-v="1" ${ulCnt ? '' : 'disabled'}>Seçilenleri Kilitle (${ulCnt})</button>
+          <button class="btn sm" data-act="bulkLockSel" data-v="0" ${lkCnt ? '' : 'disabled'}>Kilidi Aç (${lkCnt})</button>
+          <button class="btn sm ghost" data-act="bulkSelectVis" data-v="unlocked">Açıkları Seç</button>
+          <button class="btn sm ghost" data-act="bulkSelectVis" data-v="locked">Kilitlileri Seç</button>
+          <button class="btn sm ghost" data-act="bulkClearSel">Temizle</button>
+        </div>
+      </div>`;
+    }
     const g = (v === 'sinif' || v === 'ogr' || v === 'room') ? grid1(o, v === 'sinif' ? 'c' : v === 'ogr' ? 't' : 'r', ent, ed) : sheet(o, isC ? 'c' : 't', ed);
-    const legend = `<div class="legend" style="margin-top:10px"><span><i style="background:repeating-linear-gradient(135deg,var(--closed) 0 2px,transparent 2px 6px)"></i>Kapalı saat</span><span><i style="box-shadow:inset 0 0 0 2px var(--warn)"></i>Tercihen boş</span><span><i style="background:var(--okBg);box-shadow:inset 0 0 0 2px var(--ok)"></i>Taşınabilir</span><span><i style="box-shadow:inset 0 0 0 3px var(--ok)"></i>Yer değiştirilebilir</span><span><i style="background:#e5484d"></i>Kilitli ders</span></div>`;
-    return `<div class="board"><div class="card">${tabs}<div class="scroll">${g}</div>${legend}</div><div class="diag">${selPanel(o, ed)}${trayHtml(o)}</div></div>`;
+    const legend = `<div class="legend" style="margin-top:10px"><span><i style="background:repeating-linear-gradient(135deg,var(--closed) 0 2px,transparent 2px 6px)"></i>Kapalı saat</span><span><i style="box-shadow:inset 0 0 0 2px var(--warn)"></i>Tercihen boş</span><span><i style="background:var(--okBg);box-shadow:inset 0 0 0 2px var(--ok)"></i>Taşınabilir</span><span><i style="box-shadow:inset 0 0 0 3px var(--ok)"></i>Yer değiştirilebilir</span><span><i style="background:#dc2626"></i>Kilitli (Çift tıkla değiştir)</span><span><i style="box-shadow:inset 0 0 0 3px #2563eb"></i>Toplu seçim</span></div>`;
+    return `<div class="board"><div class="card">${tabs}${bulkBar}<div class="scroll">${g}</div>${legend}</div><div class="diag">${selPanel(o, ed)}${trayHtml(o)}</div></div>`;
   }
 
   function reasonsHtml(o) {
     if (!o.un.length || running) return '';
-    const { m, c } = EP.placedCore(S), cm = EP.cardMap(S), D = +S.school.D, P = +S.school.P, rows = [];
+    const { m, c } = EP.placedCore(S), cm = EP.cardMap(S), D = +S.school.D, P = +S.school.P;
     const Lnk = (txt, attrs) => `<a href="#" class="lnk" ${attrs}>${txt}</a>`;
-    for (const i of o.un.slice(0, 40)) {
-      const id = m.bid[i], b = m.blocks[i], cd = cm.get(id.split(':')[0]), cls = S.classes[b.c], t = b.t >= 0 ? S.teachers[b.t] : null, links = [];
+    const entries = [];
+
+    for (const i of o.un) {
+      const id = m.bid[i], b = m.blocks[i], cd = cm.get(id.split(':')[0]);
+      if (!cd) continue;
+      const cls = S.classes[b.c], t = b.t >= 0 ? S.teachers[b.t] : null, links = [];
       let msg = '';
       if (!t) {
         msg = 'Bu derse öğretmen atanmamış; öğretmensiz ders yerleştirilmez.';
@@ -1444,15 +1478,79 @@
         } else {
           const cnt = {}, top = {};
           for (const s of cs) { const w = c.why(i, s), k = w.startsWith('tch:') ? 'tch' : w; cnt[k] = (cnt[k] || 0) + 1; if (k === 'tch') { const nm = S.classes[m.blocks[+w.slice(4)].c].name; top[nm] = (top[nm] || 0) + 1; } }
-          const tt = Object.entries(top).sort((a, b) => b[1] - a[1]).slice(0, 2).map(x => x[0]).join(', ');
+          const tt = Object.entries(top).sort((a, b2) => b2[1] - a[1]).slice(0, 2).map(x => x[0]).join(', ');
           const parts = [cnt.cls && `${cnt.cls} sınıfta başka ders var`, cnt.tch && `${cnt.tch} öğretmen başka sınıfta (${esc(tt)})`, cnt.dmax && `${cnt.dmax} günlük sınır`, cnt.cmax && `${cnt.cmax} ardışık sınır`, cnt.diff && `${cnt.diff} farklı gün kuralı`, cnt.pair && `${cnt.pair} aynı gün olmasın`, cnt.lunch && `${cnt.lunch} öğle arası`].filter(Boolean);
           msg = cnt[''] ? `${cnt['']} boş yer var; “Dağıtılmayanları dağıt” ile yerleştirilebilir.` : `${cs.length} olası saatin tamamı dolu: ${parts.join(', ')}.`;
-          links.push(Lnk('Dersi seç ve seçenekleri gör →', `data-act="pick" data-id="${id}"`), Lnk(esc(t.name) + ' →', `data-act="goFix" data-go="teachers" data-id="${t.id}"`));
+          links.push(Lnk('Dersi seç →', `data-act="pick" data-id="${id}"`), Lnk(esc(t.name) + ' →', `data-act="goFix" data-go="teachers" data-id="${t.id}"`));
         }
       }
-      rows.push(`<div class="msg warn"><span class="ic">!</span><div><b>${esc(cls.name)} · ${esc(SN(cd.subj))} · ${b.len} saat</b> <span class="small muted">${esc(t ? t.name : 'öğretmen yok')}</span><div class="sug">${msg}</div><div class="row small" style="gap:14px;margin-top:6px">${links.join('')}</div></div><span></span></div>`);
+      entries.push({ id, cls, t, cd, len: b.len, msg, links });
     }
-    return `<div class="card" style="margin-top:16px" id="reasons"><h2>Dağıtılamayan dersler ve nedenleri · ${o.un.length}</h2><div class="diag" style="margin-top:10px">${rows.join('')}</div></div>`;
+
+    const totHours = entries.reduce((a, x) => a + x.len, 0);
+    const byClass = new Map();
+    const byTeacher = new Map();
+    for (const en of entries) {
+      const ck = en.cls.id;
+      if (!byClass.has(ck)) byClass.set(ck, { cls: en.cls, items: [], hours: 0 });
+      const cg = byClass.get(ck); cg.items.push(en); cg.hours += en.len;
+
+      const tk = en.t ? en.t.id : '__none__';
+      if (!byTeacher.has(tk)) byTeacher.set(tk, { t: en.t, items: [], hours: 0 });
+      const tg = byTeacher.get(tk); tg.items.push(en); tg.hours += en.len;
+    }
+
+    const utab = S.ui.unTab || 'class';
+    const tabs = `<div class="tabs" style="margin:10px 0 12px;display:inline-flex">
+      <button data-act="unTab" data-v="class" class="${utab === 'class' ? 'on' : ''}">Sınıfa göre (${byClass.size} sınıf)</button>
+      <button data-act="unTab" data-v="teacher" class="${utab === 'teacher' ? 'on' : ''}">Öğretmene göre (${byTeacher.size} öğretmen)</button>
+      <button data-act="unTab" data-v="all" class="${utab === 'all' ? 'on' : ''}">Tüm liste (${entries.length} blok)</button>
+    </div>`;
+
+    let body = '';
+    if (utab === 'class') {
+      const groups = [...byClass.values()].sort((a, b) => a.cls.name.localeCompare(b.cls.name, 'tr'));
+      body = `<div class="grid2">${groups.map(g => `<div class="card" style="background:var(--soft);border:0;padding:12px 14px">
+        <div class="row" style="justify-content:space-between;margin-bottom:8px">
+          <h3>${esc(g.cls.name)}</h3>
+          <span class="pill err">${g.items.length} blok · ${g.hours} saat</span>
+        </div>
+        <div class="diag" style="gap:6px">${g.items.map(en => `<div class="msg warn" style="padding:8px 10px"><span class="ic">!</span><div>
+          <b><span class="tag ${colorOf(en.cd.subj)}">${esc(SS(en.cd.subj))}</span> ${esc(SN(en.cd.subj))} · ${en.len} sa</b>
+          <span class="small muted"> — ${esc(en.t ? en.t.name : 'Öğretmen atanmamış')}</span>
+          <div class="sug">${en.msg}</div>
+          <div class="row small" style="gap:12px;margin-top:4px">${en.links.join('')}</div>
+        </div><span></span></div>`).join('')}</div>
+      </div>`).join('')}</div>`;
+    } else if (utab === 'teacher') {
+      const groups = [...byTeacher.values()].sort((a, b) => {
+        if (!a.t) return -1; if (!b.t) return 1;
+        return a.t.name.localeCompare(b.t.name, 'tr');
+      });
+      body = `<div class="grid2">${groups.map(g => `<div class="card" style="background:var(--soft);border:0;padding:12px 14px">
+        <div class="row" style="justify-content:space-between;margin-bottom:8px">
+          <div><h3>${esc(g.t ? g.t.name : 'Öğretmen Atanmamış Dersler')}</h3>${g.t ? `<small class="muted">${esc(g.t.branch || '')}</small>` : ''}</div>
+          <span class="pill err">${g.items.length} blok · ${g.hours} saat</span>
+        </div>
+        <div class="diag" style="gap:6px">${g.items.map(en => `<div class="msg warn" style="padding:8px 10px"><span class="ic">!</span><div>
+          <b>${esc(en.cls.name)}</b> · <span class="tag ${colorOf(en.cd.subj)}">${esc(SS(en.cd.subj))}</span> <b>${esc(SN(en.cd.subj))} · ${en.len} sa</b>
+          <div class="sug">${en.msg}</div>
+          <div class="row small" style="gap:12px;margin-top:4px">${en.links.join('')}</div>
+        </div><span></span></div>`).join('')}</div>
+      </div>`).join('')}</div>`;
+    } else {
+      body = `<div class="diag">${entries.map(en => `<div class="msg warn"><span class="ic">!</span><div><b>${esc(en.cls.name)} · <span class="tag ${colorOf(en.cd.subj)}">${esc(SS(en.cd.subj))}</span> ${esc(SN(en.cd.subj))} · ${en.len} saat</b> <span class="small muted">${esc(en.t ? en.t.name : 'öğretmen yok')}</span><div class="sug">${en.msg}</div><div class="row small" style="gap:14px;margin-top:6px">${en.links.join('')}</div></div><span></span></div>`).join('')}</div>`;
+    }
+
+    return `<div class="card" style="margin-top:16px" id="reasons">
+      <div class="row" style="justify-content:space-between">
+        <div>
+          <h2>Dağıtılamayan Dersler · ${entries.length} blok (${totHours} saat)</h2>
+          <p class="small muted" style="margin-top:3px">${byClass.size} sınıf · ${byTeacher.size} öğretmen etkilendi. Hangi sınıfın veya öğretmenin hangi dersinin yerleşmediğini sekmelerden inceleyin.</p>
+        </div>
+      </div>
+      ${tabs}${body}
+    </div>`;
   }
 
   /* 9. Dağıtım ve Program (Otomatik Dağıtım + Elle Düzenleme + Toplu Kilitleme tek ekranda) */
@@ -1480,7 +1578,7 @@
           <button class="btn" data-act="fill" ${running || !o.un.length ? 'disabled' : ''}>Dağıtılmayanları dağıt</button>
           <button class="btn" data-act="improve" ${running || o.un.length || !tot ? 'disabled' : ''}>İyileştir</button>
           <button class="btn" data-act="stop" ${running ? '' : 'disabled'}>Durdur</button>
-          <button class="btn" data-act="maxFinish" ${running === 'full' || running === 'fill' ? '' : 'disabled'}>Maksimumda bitir</button>
+          <button class="btn" data-act="maxFinish" ${running ? '' : 'disabled'} title="Şu ana kadar dağıtılan dersleri şablona işler ve bitirir; yerleşmeyenler altta listelenir">Maksimumda bitir</button>
           <button class="btn ghost" data-act="clearPlan" ${running || !pl ? 'disabled' : ''}>Dağıtımı temizle</button>
           <button class="btn ghost" data-act="verify">Kontrol et</button>
         </div>
@@ -1523,7 +1621,141 @@
         </tbody></table></div>`;
   }
 
-  /* 14. Raporlar ve Çıktılar -> EP.vRapor(S, H) */
+  /* 11. Okul Nöbeti (Haftalık & Aylık Nöbet Oluşturma) */
+  function vDuty() {
+    const D = +S.school.D || 5, pl = EP.dutyPlaces(S), dCfg = S.duty || {};
+    const adm = dCfg.admin || {}, strategy = dCfg.strategy || 'min_lessons';
+    const avoidZeroDay = dCfg.avoidZeroDay !== false;
+    const dtab = S.ui.dutyTab === 'monthly' ? 'monthly' : 'weekly';
+    const ym = dCfg.month || EP.defaultYearMonth();
+    const mMode = dCfg.monthlyMode || 'rotate';
+    const o = EP.occ(S), loadsByT = EP.teacherDailyLoads(S, o);
+    const vpNames = [...new Set([...EP.myList(S).map(m => m.name), ...S.teachers.filter(t => t.role === 'mudur_yardimcisi').map(t => t.name)].filter(Boolean))];
+    const eligibleCount = S.teachers.filter(t => !EP.isDutyExempt(S, t)).length;
+    const exemptCount = S.teachers.length - eligibleCount;
+    const assignedCount = S.teachers.filter(t => !EP.isDutyExempt(S, t) && EP.dutyOf(t).d >= 0).length;
+
+    const head = H('Okul Nöbeti Oluşturma', 'Öğretmenlerin haftalık ders programına göre (en az dersli gün, en çok dersli gün veya dengeli) haftalık ve aylık nöbet çizelgesi oluşturun. Nöbet tutar/tutmaz ayarını tek tıkla yönetin.',
+      `<button class="btn pri" data-act="dutyAuto">Haftalık Nöbeti Oluştur</button><button class="btn" data-act="buildMonthlyDuty">Aylık Nöbeti Oluştur</button><button class="btn" data-act="clubAuto">Sosyal Kulüpleri Dağıt</button>`);
+
+    const tabs = `<div class="tabs" style="margin-bottom:14px;display:inline-flex">
+      <button data-act="dutyTab" data-v="weekly" class="${dtab === 'weekly' ? 'on' : ''}">Haftalık Nöbet (Sabit Haftalık)</button>
+      <button data-act="dutyTab" data-v="monthly" class="${dtab === 'monthly' ? 'on' : ''}">Aylık Nöbet Çizelgesi (${esc(ym)})</button>
+    </div>`;
+
+    const kpis = `<div class="kpis">
+      <div class="kpi"><small>Nöbet Tutan Öğretmen</small><b>${eligibleCount}</b><span>${assignedCount} kişiye gün atandı</span></div>
+      <div class="kpi"><small>Nöbet Tutmayan / Muaf</small><b>${exemptCount}</b><span>Okul müdürü, müdür yrd. &amp; muaf</span></div>
+      <div class="kpi"><small>Nöbet Yeri</small><b>${pl.length}</b><span>${esc(pl.join(', '))}</span></div>
+      <div class="kpi"><small>Dağıtım Kuralı</small><b style="font-size:15px">${strategy === 'min_lessons' ? 'En az dersli gün' : strategy === 'max_lessons' ? 'En çok dersli gün' : 'Dengeli'}</b><span>${avoidZeroDay ? 'Boş güne verilmez' : 'Tüm açık günler'}</span></div>
+    </div>`;
+
+    const settingsCard = `<div class="card" style="margin-bottom:14px">
+      <h2>Nöbet Ayarları, Yerler ve Dağıtım Kuralı</h2>
+      <div class="fields" style="margin-top:12px">
+        <label class="f" style="grid-column:span 2">Nöbet yerleri (virgülle ayırın)<input data-dplaces="1" value="${esc(pl.join(', '))}" placeholder="Bahçe, 1. Kat Koridor, 2. Kat Koridor, Zemin Kat"></label>
+        <label class="f" style="grid-column:span 2">Öğretmen ders programına göre dağıtım kuralı<select data-dutycfg="strategy">${EP.DUTY_STRATEGIES.map(([k, l]) => `<option value="${k}" ${strategy === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+        <label class="f" style="grid-column:span 2">Boş gün kuralı<span class="row small" style="min-height:40px;padding:0 10px;border:1px solid var(--line);border-radius:9px"><input type="checkbox" data-dutycfg="avoidZeroDay" ${avoidZeroDay ? 'checked' : ''}> 0 dersli (boş) gününe nöbet verme</span></label>
+      </div>
+      <h3 style="margin:14px 0 8px">Günlük Nöbetçi İdareciler (Müdür Yardımcıları)</h3>
+      <div class="fields"><datalist id="mylistDuty">${vpNames.map(n => `<option value="${esc(n)}">`).join('')}</datalist>
+        ${GUN.slice(0, D).map((g, d) => `<label class="f">${g}<input list="mylistDuty" data-dadmin="${d}" value="${esc(adm[d] || '')}" placeholder="Müdür Yardımcısı"></label>`).join('')}
+      </div>
+    </div>`;
+
+    if (dtab === 'monthly') {
+      const mRows = (dCfg.monthly && dCfg.monthly[ym]) || EP.buildMonthlyDuty(S, ym, mMode);
+      const [yr, mo] = ym.split('-').map(Number);
+      const ayTxt = `${(EP.AY_AD || [])[(mo || 1) - 1] || ''} ${yr}`;
+      const monthlyCard = `<div class="card scroll">
+        <div class="row" style="justify-content:space-between;margin-bottom:12px">
+          <div>
+            <h2>${esc(ayTxt)} Aylık Nöbet Çizelgesi (${mRows.length} okul günü)</h2>
+            <p class="small muted" style="margin-top:3px">Öğretmenin ders programına uygun haftalık günü korunur; isterseniz haftadan haftaya nöbet yerleri otomatik döndürülür. Herhangi bir günün hücresini elle düzenleyebilirsiniz.</p>
+          </div>
+          <div class="row">
+            <button class="btn pri" data-act="exMonthlyPdf">Aylık PDF İndir (.pdf)</button>
+            <button class="btn" data-act="exMonthlyPrint">Yazdır</button>
+            <button class="btn" data-act="exMonthlyExcel">Excel (.xls)</button>
+            <button class="btn" data-act="exMonthlyWord">Word (.doc)</button>
+          </div>
+        </div>
+        <div class="row" style="margin-bottom:12px;gap:10px;align-items:flex-end">
+          <label class="f" style="width:180px">Ay / Yıl seçin<input type="month" data-dutycfg="month" value="${esc(ym)}"></label>
+          <label class="f" style="min-width:280px">Aylık dağıtım biçimi<select data-dutycfg="monthlyMode">
+            <option value="rotate" ${mMode === 'rotate' ? 'selected' : ''}>Haftadan haftaya nöbet yerlerini döndür (Adil rotasyon)</option>
+            <option value="fixed" ${mMode === 'fixed' ? 'selected' : ''}>Her hafta aynı gün ve aynı nöbet yeri (Sabit)</option>
+          </select></label>
+          <button class="btn pri" data-act="buildMonthlyDuty">Aylık Çizelgeyi Yeniden Oluştur</button>
+        </div>
+        <table class="tbl"><thead><tr><th style="width:110px">Tarih</th><th style="width:100px">Gün</th>${pl.map(p => `<th>${esc(p)}</th>`).join('')}<th>Nöbetçi İdareci</th></tr></thead><tbody>
+        ${mRows.map((row, rIdx) => `<tr>
+          <td><b>${esc(row.date.split('-').reverse().join('.'))}</b></td>
+          <td>${GUN[row.dow]} <span class="small muted">(${row.weekNum}. hf)</span></td>
+          ${pl.map(p => `<td><input data-mcell="${esc(ym)}|${rIdx}|${esc(p)}" value="${esc(((row.posts || {})[p] || []).join(', '))}" style="width:100%;min-width:130px"></td>`).join('')}
+          <td><input data-madmin="${esc(ym)}|${rIdx}" value="${esc(row.admin || '')}" style="width:100%;min-width:120px"></td>
+        </tr>`).join('')}
+        </tbody></table>
+      </div>`;
+      return head + tabs + kpis + settingsCard + monthlyCard;
+    }
+
+    // Haftalık Nöbet Görünümü
+    const tsDuty = S.teachers.filter(t => !EP.isDutyExempt(S, t) && EP.dutyOf(t).d >= 0);
+    const cellNames = (d, p) => tsDuty.filter(t => EP.dutyOf(t).d === d && (EP.dutyOf(t).place || pl[0]) === p).map(t => `<span class="tag" style="background:var(--okBg);color:var(--ok);margin:2px">${esc(t.name)}</span>`).join('') || '<span class="small muted">—</span>';
+
+    const weeklyGrid = `<div class="card scroll" style="margin-bottom:14px">
+      <div class="row" style="justify-content:space-between;margin-bottom:10px">
+        <div>
+          <h2>Haftalık Sabit Nöbet Tablosu</h2>
+          <p class="small muted" style="margin-top:2px">Her hafta aynı gün ve nöbet yerinde uygulanacak çizelge.</p>
+        </div>
+        <div class="row">
+          <button class="btn pri" data-act="exDutyPdf">Haftalık PDF İndir (.pdf)</button>
+          <button class="btn" data-act="exDutyPrint">Yazdır</button>
+          <button class="btn" data-act="exDutyWord">Word (.doc)</button>
+          <button class="btn ghost" data-act="dutyClear">Nöbetleri Temizle</button>
+        </div>
+      </div>
+      <table class="tbl"><thead><tr><th style="width:120px">Gün</th>${pl.map(p => `<th>${esc(p)}</th>`).join('')}<th>Nöbetçi İdareci</th></tr></thead><tbody>
+      ${GUN.slice(0, D).map((g, d) => `<tr><td><b>${g}</b></td>${pl.map(p => `<td>${cellNames(d, p)}</td>`).join('')}<td><b>${esc(adm[d] || '—')}</b></td></tr>`).join('')}
+      </tbody></table>
+    </div>`;
+
+    const staffTable = `<div class="card scroll">
+      <h2>Öğretmen Nöbet Tutar / Tutmaz Listesi ve Ders Yoğunlukları (${S.teachers.length})</h2>
+      <p class="small muted" style="margin:4px 0 10px">Okul müdürü, müdür yardımcıları ve rehber öğretmenler otomatik muaftır. Diğer öğretmenler için <b>Nöbet Tutar / Tutmaz</b> anahtarını tek tıkla değiştirebilirsiniz. Yeşil etiket öğretmenin en az dersli gününü, sarı etiket en çok dersli gününü gösterir.</p>
+      <table class="tbl"><thead><tr><th>Öğretmen / İdareci</th><th>Nöbet Durumu</th><th>Ders Programı (Günlük Ders)</th><th>Nöbet Günü</th><th>Nöbet Yeri</th><th>Sosyal Kulüp</th></tr></thead><tbody>
+      ${S.teachers.map(t => {
+        const du = EP.dutyOf(t), ak = EP.staffAdminKind(S, t), exempt = EP.isDutyExempt(S, t);
+        const dl = loadsByT[t.id] || Array(D).fill(0);
+        const pos = dl.filter(n => n > 0);
+        const minV = pos.length ? Math.min(...pos) : -1;
+        const maxV = pos.length ? Math.max(...pos) : -1;
+        const chips = dl.map((n, di) => {
+          const cls = n === 0 ? 'z' : n === minV ? 'min' : n === maxV ? 'max' : '';
+          return `<span class="duty-day-chip ${cls}" title="${GUN[di]}: ${n} saat ders">${GK[di]}:${n}</span>`;
+        }).join(' ');
+        return `<tr>
+          <td><b>${esc(t.name)}</b><br><small class="muted">${esc(t.branch || '')}${ak ? ' · ' + esc(EP.dutyExemptReason(S, t)) : ''}</small></td>
+          <td>
+            <div class="row" style="gap:8px;flex-wrap:nowrap">
+              <button class="sw ${exempt ? '' : 'on'}" data-act="toggleDutyExempt" data-id="${t.id}" ${ak ? 'disabled title="İdareci ve rehber öğretmenler otomatik muaftır"' : 'title="Nöbet Tutar / Nöbet Tutmaz değiştir"'}></button>
+              <span class="pill ${exempt ? 'warn' : 'ok'}">${exempt ? 'Nöbet Tutmaz' : 'Nöbet Tutar'}</span>
+            </div>
+          </td>
+          <td><div class="row" style="gap:4px">${chips}</div></td>
+          <td>${exempt ? `<span class="small muted">${esc(EP.dutyExemptReason(S, t))}</span>` : `<select data-t="${t.id}" data-f="dutyD"><option value="">— Seçilmedi —</option>${GUN.slice(0, D).map((g, d) => `<option value="${d}" ${du.d === d ? 'selected' : ''}>${g} (${dl[d]} ders)</option>`).join('')}</select>`}</td>
+          <td>${exempt ? '<span class="small muted">—</span>' : `<select data-t="${t.id}" data-f="dutyP">${pl.map(p => `<option ${(du.place || pl[0]) === p ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select>`}</td>
+          <td><select data-t="${t.id}" data-f="kulup" style="max-width:220px">${EP.clubOptions(S, t.kulup || '')}</select></td>
+        </tr>`;
+      }).join('')}</tbody></table>
+    </div>`;
+
+    return head + tabs + kpis + settingsCard + weeklyGrid + staffTable;
+  }
+
+  /* 12. Raporlar ve Çıktılar -> EP.vRapor(S, H) */
 
   /* 15. Yedekleme ve Senkronizasyon */
   function vProje() {
@@ -1616,21 +1848,29 @@
 
   /* 16. Yardım ve Destek */
   function vHelp() {
-    return H('Yardım ve Destek', 'Kısayollar, hızlı kullanım rehberi ve resmi EvrakPlus destek bağlantıları.') +
+    const logged = isMember();
+    return H('Yardım ve Destek', 'Kısayollar, hızlı kullanım rehberi ve EvrakPlus hesap bağlantıları.') +
       `<div class="grid2">
         <div class="card"><h2>Klavye &amp; Fare Kısayolları</h2>
           <table class="tbl" style="margin-top:8px"><tbody>
-            <tr><td><b>Sol tık (dolu hücre)</b></td><td>Kilitle, öğretmen değiştir, programdan çıkar veya sil</td></tr>
+            <tr><td><b>Çift tık (dolu hücre)</b></td><td>Dersi anında kilitle / kilidi aç</td></tr>
+            <tr><td><b>Ctrl + Tık / Toplu Kilit Seçimi</b></td><td>Birden fazla dersi seçip topluca kilitle veya kilidini aç</td></tr>
+            <tr><td><b>Sol tık (dolu hücre)</b></td><td>İşlem menüsü: kilitle, öğretmen değiştir, çıkar veya sil</td></tr>
             <tr><td><b>Sağ tık (boş hücre)</b></td><td>O sınıfın zorunlu/seçmeli derslerini blok seçerek yerleştir</td></tr>
             <tr><td><b>Sürükle-Bırak</b></td><td>Dersi yeşil boş hücreye taşı veya yeşil çerçeveli dersle yer değiştir</td></tr>
             <tr><td><b>Ctrl + Z / Ctrl + Y</b></td><td>40 adımlı Geri Al / Yinele</td></tr>
             <tr><td><b>Esc</b></td><td>Açık pencere, menü veya seçimi kapat</td></tr>
           </tbody></table>
         </div>
-        <div class="card"><h2>EvrakPlus Bağlantıları</h2>
+        <div class="card"><h2>EvrakPlus Hesap ve Destek</h2>
+          ${logged
+            ? `<div class="msg ok" style="margin:10px 0 12px"><span class="ic">✓</span><div><b>EvrakPlus Üye Girişi Aktif</b><div class="sug">${esc(authUser.displayName || authUser.username || 'EvrakPlus Üyesi')} — Tüm PDF, Word, Excel ve PNG çıktılarınız filigransız ve temizdir.</div></div><span></span></div>`
+            : `<p class="small muted" style="margin:8px 0 12px">Henüz giriş yapılmadı. Ücretsiz EvrakPlus hesabınızla giriş yaptığınızda tüm çıktılarınız otomatik olarak filigransız olur.</p>`}
           <div class="diag" style="margin-top:10px">
+            ${logged
+              ? `<button class="btn pri" data-step="account">EvrakPlus Hesabım'a Git</button><button class="btn ghost" data-act="logoutAuth">Oturumu Kapat</button>`
+              : `<button class="btn pri" data-act="openLogin">EvrakPlus ile Giriş Yap / Üye Ol</button>`}
             <a class="btn" href="${EP.EVRAKPLUS_SITE_URL}" target="_blank" rel="noopener">EvrakPlus Ana Sayfa (evrakplus.com)</a>
-            <a class="btn" href="${EP.EVRAKPLUS_LOGIN_URL}" target="_blank" rel="noopener">Ücretsiz Üyelik / Giriş</a>
           </div>
         </div>
       </div>`;
@@ -1776,15 +2016,49 @@
     if (b) b.style.width = Math.min(100, Math.round(100 * (live.placed || 0) / tot)) + '%';
   }
 
+  function applyMaxFinishPartial(bestPlacements, elapsedMs) {
+    const m = EP.buildModel(S), tot = m.blocks.length;
+    const lockOf = {};
+    for (const k in S.place) if (S.place[k].lock) lockOf[k] = 1;
+
+    if (bestPlacements && Object.keys(bestPlacements).length > 0) {
+      snap();
+      const cnt = EP.applyV3SolutionToState(S, { placements: bestPlacements }, true);
+      S.last = {
+        status: cnt >= tot ? 'ok' : 'partial',
+        ms: elapsedMs || live.ms || 0,
+        note: `Maksimumda bitirildi: ${cnt}/${tot} blok`
+      };
+      running = null;
+      runCtx = null;
+      hist('Maksimumda bitirildi');
+      commit();
+      toast(`Maksimumda bitirildi: ${cnt}/${tot} blok şablona işlendi.` + (tot > cnt ? ` ${tot - cnt} blok dağıtılamayanlar alanında listelendi.` : ''));
+      return;
+    }
+
+    // Henüz ara çözüm gelmediyse (erken durdurma veya çakışmalı okul) kilitlileri koruyarak sığan maksimum dersleri anında şablona işle
+    const fh = fixedHint(m, 'full');
+    const r = EP.CORE().make(m).solve({ prio: S.ui.prio || 'gaps', time: 1800, fixed: fh.fixed }, null);
+    applyBrowserResult(m, r.pos, lockOf, {
+      status: r.best >= tot ? 'ok' : 'partial',
+      ms: (elapsedMs || live.ms || 0) + (r.ms || 0),
+      note: `Maksimumda bitirildi: ${r.best}/${tot} blok`
+    }, m.bid, null);
+    hist('Maksimumda bitirildi');
+    toast(`Maksimumda bitirildi: ${r.best}/${tot} blok şablona işlendi.` + (tot > r.best ? ` ${tot - r.best} blok dağıtılamayanlar alanında listelendi.` : ''));
+  }
+
   async function runNativeSolve(kind, overrideOpts) {
     const o = EP.occ(S), tot = o.m.blocks.length;
     if (!tot) { toast('Dağıtılacak ders bloğu yok.'); return; }
     closePop(); sel = '';
     running = 'native';
+    nativeStopMode = null;
     const mode = (overrideOpts && overrideOpts.mode) || 'smart';
     const timeLimitSeconds = Number(S.ui.time || 30) || 10800;
     const t0 = Date.now();
-    live = { placed: 0, total: tot, ms: 0, status: 'En iyi program aranıyor…' };
+    live = { placed: 0, total: tot, ms: 0, bestPlacements: null, status: 'En iyi program aranıyor…' };
     render();
     const timer = setInterval(() => { if (running === 'native') { live.ms = Date.now() - t0; upLive(); } }, 400);
 
@@ -1809,6 +2083,17 @@
       }
 
       clearInterval(timer);
+      if (nativeStopMode === 'maxFinish') {
+        // maxFinish düğmesi zaten şablona işledi
+        nativeStopMode = null;
+        return;
+      }
+      if (nativeStopMode === 'stop') {
+        nativeStopMode = null;
+        running = null;
+        render();
+        return;
+      }
       running = null;
       if (!res) { render(); toast('Dağıtım yanıtı alınamadı.'); return; }
 
@@ -1828,12 +2113,12 @@
         commit();
         toast(`Program ${fmtMs(S.last.ms)} içinde hazırlandı: ${count}/${tot} blok, kalite ${score}/100.`);
       } else {
-        S.last = { status: 'partial', ms: Date.now() - t0, note: 'Geçerli çözüm bulunamadı; ön kontrolü inceleyin' };
-        render();
-        toast('Geçerli bir yerleşim bulunamadı; ön kontrol uyarılarını inceleyin.');
+        // Tam çözüm bulunamadıysa (ör. çakışmalı okul) sığan maksimum dersleri şablona işle ki dağıtılamayanlar açıkça görünsün
+        applyMaxFinishPartial(live.bestPlacements, Date.now() - t0);
       }
     } catch (err) {
       clearInterval(timer);
+      if (nativeStopMode === 'maxFinish') { nativeStopMode = null; return; }
       running = null;
       render();
       toast('Dağıtım hatası: ' + (err && err.message ? err.message : String(err)));
@@ -2061,7 +2346,7 @@
     const views = {
       dashboard: vDashboard, school: vOkul, teachers: vOgretmen, classes: vSinif,
       subjects: vHavuz, rooms: () => { S.ui.stab = 'rooms'; return vOkul(); }, assignments: vDersler, constraints: vKural,
-      auto_schedule: vDagitim, timetables: vTimetables, analytics: vAnalytics,
+      auto_schedule: vDagitim, timetables: vTimetables, analytics: vAnalytics, duty: vDuty,
       reports: () => EP.vRapor(S, H, isMember()), backup_sync: vProje, account: vAccount,
       system: vSystem, help: vHelp
     };
@@ -2094,7 +2379,52 @@
       case 'fill': runSolve('fill'); break;
       case 'improve': runImprove(); break;
       case 'relax': runRelax(); break;
-      case 'goDutyTab': S.ui.rtab = 'nb'; go('reports'); break;
+      case 'goDutyTab': go('duty'); break;
+      case 'unTab': S.ui.unTab = a.dataset.v; render(); break;
+      case 'dutyTab': S.ui.dutyTab = a.dataset.v; render(); break;
+      case 'toggleBulkLock':
+        bulkMode = !bulkMode;
+        if (!bulkMode) bulkSel.clear();
+        closePop(); sel = ''; render();
+        break;
+      case 'bulkClearSel': bulkSel.clear(); bulkMode = false; render(); break;
+      case 'bulkSelectVis': {
+        const wantLock = a.dataset.v === 'locked';
+        const seen = new Set();
+        document.querySelectorAll('td[data-act="cell"][data-id]').forEach(td => {
+          const bid = td.dataset.id;
+          if (!bid || seen.has(bid) || !S.place[bid]) return;
+          seen.add(bid);
+          if (Boolean(S.place[bid].lock) === wantLock) bulkSel.add(bid);
+        });
+        bulkMode = true; render();
+      } break;
+      case 'bulkLockSel': {
+        const lockVal = a.dataset.v === '1';
+        const ids = [...bulkSel].filter(bid => Boolean(S.place[bid]));
+        if (!ids.length) break;
+        snap();
+        let n = 0;
+        for (const bid of ids) {
+          if (Boolean(S.place[bid].lock) !== lockVal) { S.place[bid].lock = lockVal; n++; }
+        }
+        bulkSel.clear();
+        commit();
+        toast(`${n} ders ${lockVal ? 'kilitlendi' : 'kilidi açıldı'}.`);
+      } break;
+      case 'bulkToggleSel': {
+        const ids = [...bulkSel].filter(bid => Boolean(S.place[bid]));
+        if (!ids.length) break;
+        snap();
+        let lk = 0, ul = 0;
+        for (const bid of ids) {
+          S.place[bid].lock = !S.place[bid].lock;
+          if (S.place[bid].lock) lk++; else ul++;
+        }
+        bulkSel.clear();
+        commit();
+        toast(`Toplu işlem tamamlandı: ${lk} ders kilitlendi, ${ul} dersin kilidi açıldı.`);
+      } break;
       case 'goTAssign': S.ui.tsel = id; S.ui.dtab = 'ogretmen'; go('assignments'); break;
       case 'swapCardModal': openSwapCardModal(id); break;
       case 'unassignCard': {
@@ -2138,6 +2468,7 @@
         }
       } break;
       case 'stop':
+        nativeStopMode = 'stop';
         if (bridge && typeof bridge.cancelSolve === 'function') bridge.cancelSolve().catch(() => {});
         if (wk) { wk.terminate(); wk = null; }
         running = null; runCtx = null; if (relax && relax.run) relax = null;
@@ -2152,6 +2483,11 @@
       case 'cell': {
         if (running) break;
         const key = a.dataset.key, tid = a.dataset.id || '', ent = a.dataset.ent, kind = a.dataset.kind;
+        if (tid && (bulkMode || e.ctrlKey || e.metaKey)) {
+          if (bulkSel.has(tid)) bulkSel.delete(tid); else bulkSel.add(tid);
+          sel = ''; closePop(); render();
+          break;
+        }
         if (sel && tid !== sel && moveTo(sel, key, tid, ent)) { sel = ''; closePop(); commit(); toast('Ders taşındı.'); break; }
         if (tid && tid === sel && pop && pop.id === tid) { sel = ''; closePop(); render(); break; }
         sel = tid; pop = { key, ent, kind, id: tid }; render();
@@ -2226,11 +2562,28 @@
         commit(); toast(allC ? GUN[d0] + ' açıldı.' : GUN[d0] + ' kapatıldı.');
       } break;
       case 'pPlace': if (pop) { const x = pop.key.split('-').map(Number); snap(); S.place[id] = { d: x[0], p: x[1], lock: false }; sel = ''; closePop(); commit(); await guardLock([id], 'Yine de yerleştir'); } break;
-      case 'maxFinish': if (runCtx && runCtx.best) {
-        const b = runCtx.best, tot = runCtx.m.blocks.length;
-        applyBrowserResult(runCtx.m, b.pos, runCtx.lockOf, { status: b.n >= tot ? 'ok' : 'partial', ms: live.ms, nodes: live.nodes, restarts: live.restarts, note: `Maksimumda bitirildi: ${b.n}/${tot}` }, b.bid, b.choice);
-        hist('Maksimumda bitirildi'); toast(`En iyi yerleşim uygulandı: ${b.n}/${tot} blok.`);
-      } else toast('Henüz uygulanacak yerleşim yok.'); break;
+      case 'maxFinish':
+        if (running === 'native') {
+          nativeStopMode = 'maxFinish';
+          let bestFromCancel = null;
+          if (bridge && typeof bridge.cancelSolve === 'function') {
+            try { bestFromCancel = await bridge.cancelSolve(); } catch (_) {}
+          }
+          const pl = (bestFromCancel && bestFromCancel.placements && Object.keys(bestFromCancel.placements).length > 0)
+            ? bestFromCancel.placements
+            : live.bestPlacements;
+          applyMaxFinishPartial(pl, live.ms);
+        } else if (runCtx && runCtx.best) {
+          const b = runCtx.best, tot = runCtx.m.blocks.length;
+          applyBrowserResult(runCtx.m, b.pos, runCtx.lockOf, { status: b.n >= tot ? 'ok' : 'partial', ms: live.ms, nodes: live.nodes, restarts: live.restarts, note: `Maksimumda bitirildi: ${b.n}/${tot}` }, b.bid, b.choice);
+          hist('Maksimumda bitirildi'); toast(`Maksimumda bitirildi: ${b.n}/${tot} blok şablona işlendi.`);
+        } else if (running) {
+          if (wk) { wk.terminate(); wk = null; }
+          applyMaxFinishPartial(null, live.ms);
+        } else {
+          toast('Şu an çalışan bir dağıtım yok.');
+        }
+        break;
       case 'clearPlan': {
         const n = Object.keys(S.place).length, lk = EP.lockedIds(S).length;
         const v = await askChoice('Dağıtımı temizle', `${n} yerleşik blok var${lk ? `, ${lk} tanesi kilitli` : ''}.`, [{ label: 'Vazgeç', v: null }, ...(lk ? [{ label: 'Kilitliler kalsın', v: 'keep' }] : []), { label: 'Hepsini temizle', v: 'all', pri: true }]);
@@ -2486,7 +2839,47 @@
       } break;
       case 'myAdd': snap(); S.school.myard = EP.myList(S); S.school.myard.push({ id: uid(), name: '', gorev: '' }); commit(); break;
       case 'myDel': snap(); S.school.myard = EP.myList(S).filter(m => m.id !== id); if (S.report && S.report.myId === id) S.report.myId = ''; commit(); break;
-      case 'dutyAuto': snap(); { const n = EP.dutyAuto(S); commit(); toast(n + ' öğretmene nöbet günü ve yeri verildi (idareciler ve muaflar hariç tutuldu).'); } break;
+      case 'dutyAuto': snap(); { const n = EP.dutyAuto(S); commit(); toast(n + ' öğretmene ders programına göre haftalık nöbet verildi (idareciler ve nöbet tutmayanlar hariç tutuldu).'); } break;
+      case 'toggleDutyExempt': {
+        const t = S.teachers.find(x => x.id === id);
+        if (!t || EP.staffAdminKind(S, t)) break;
+        snap();
+        t.dutyExempt = !t.dutyExempt;
+        if (t.dutyExempt) { t.dutyD = ''; t.dutyP = ''; }
+        commit();
+        toast(`${t.name}: ${t.dutyExempt ? 'Nöbet Tutmaz (Muaf)' : 'Nöbet Tutar'} olarak güncellendi.`);
+      } break;
+      case 'buildMonthlyDuty': {
+        const ym = (S.duty && S.duty.month) || EP.defaultYearMonth();
+        const mode = (S.duty && S.duty.monthlyMode) || 'rotate';
+        snap();
+        const rows = EP.buildMonthlyDuty(S, ym, mode);
+        S.ui.dutyTab = 'monthly';
+        commit();
+        toast(`${ym} için ${rows.length} okul gününü kapsayan aylık nöbet çizelgesi oluşturuldu.`);
+      } break;
+      case 'exDutyPdf': case 'exDutyPrint': case 'exDutyWord': {
+        const label = act === 'exDutyWord' ? 'Haftalık nöbet Word (.doc)' : act === 'exDutyPrint' ? 'Haftalık nöbet yazdırma' : 'Haftalık nöbet PDF (.pdf)';
+        const mode = await resolveExportMode(label);
+        if (!mode) break;
+        const wm = mode !== 'clean', title = S.school.name + ' Haftalik Nobet';
+        const body = EP.docsFor(S, 'nb', '', { watermark: wm });
+        if (act === 'exDutyWord') downloadBlob(title.replace(/[\\/:*?"<>|]+/g, '') + '.doc', `\uFEFF<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><style>${EP.DOC_CSS}</style></head><body>${body}</body></html>`, 'application/msword;charset=utf-8');
+        else if (act === 'exDutyPrint') await printReportNow(EP.docFile(S, body, title), false);
+        else await exportReportPdf(EP.docFile(S, body, title), title, false);
+      } break;
+      case 'exMonthlyPdf': case 'exMonthlyPrint': case 'exMonthlyExcel': case 'exMonthlyWord': {
+        const label = act === 'exMonthlyExcel' ? 'Aylık nöbet Excel (.xls)' : act === 'exMonthlyWord' ? 'Aylık nöbet Word (.doc)' : act === 'exMonthlyPrint' ? 'Aylık nöbet yazdırma' : 'Aylık nöbet PDF (.pdf)';
+        const mode = await resolveExportMode(label);
+        if (!mode) break;
+        const wm = mode !== 'clean', ym = (S.duty && S.duty.month) || EP.defaultYearMonth();
+        const title = `${S.school.name} Aylik Nobet ${ym}`;
+        const body = EP.docMonthlyDuty(S, ym, { watermark: wm });
+        if (act === 'exMonthlyExcel') downloadBlob(title.replace(/[\\/:*?"<>|]+/g, '') + '.xls', `\uFEFF<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><style>${EP.DOC_CSS}</style></head><body>${body}</body></html>`, 'application/vnd.ms-excel;charset=utf-8');
+        else if (act === 'exMonthlyWord') downloadBlob(title.replace(/[\\/:*?"<>|]+/g, '') + '.doc', `\uFEFF<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><style>${EP.DOC_CSS}</style></head><body>${body}</body></html>`, 'application/msword;charset=utf-8');
+        else if (act === 'exMonthlyPrint') await printReportNow(EP.docFile(S, body, title), false);
+        else await exportReportPdf(EP.docFile(S, body, title), title, false);
+      } break;
       case 'clubAuto': snap(); { const n = EP.clubAuto(S); commit(); toast(n ? n + ' öğretmene MEB sosyal kulüp atandı.' : 'Tüm öğretmenlerin kulübü zaten tanımlı.'); } break;
       case 'addClub': {
         const inp = $('#newClubName'), nm = inp ? inp.value.trim() : '';
@@ -2682,6 +3075,33 @@
     if (el.dataset.rep) { snap(); S.report = S.report || {}; S.report[el.dataset.rep] = el.value; commit(); return; }
     if (el.dataset.dplaces) { snap(); S.duty = S.duty || { admin: {} }; S.duty.places = el.value.split(',').map(x => x.trim()).filter(Boolean); commit(); return; }
     if (el.dataset.dadmin != null) { snap(); S.duty = S.duty || { places: [] }; S.duty.admin = S.duty.admin || {}; S.duty.admin[el.dataset.dadmin] = el.value; commit(); return; }
+    if (el.dataset.dutycfg) {
+      snap();
+      S.duty = S.duty || { places: ['Bahçe', 'Koridor'], admin: {}, monthly: {} };
+      const f = el.dataset.dutycfg;
+      S.duty[f] = el.type === 'checkbox' ? el.checked : el.value;
+      if (f === 'month' || f === 'monthlyMode') EP.buildMonthlyDuty(S, S.duty.month, S.duty.monthlyMode);
+      commit(); return;
+    }
+    if (el.dataset.mcell) {
+      const [ym, rIdxStr, place] = el.dataset.mcell.split('|');
+      const rows = S.duty && S.duty.monthly && S.duty.monthly[ym];
+      const row = rows && rows[+rIdxStr];
+      if (row) {
+        snap();
+        row.posts = row.posts || {};
+        row.posts[place] = el.value.split(',').map(x => x.trim()).filter(Boolean);
+        save();
+      }
+      return;
+    }
+    if (el.dataset.madmin) {
+      const [ym, rIdxStr] = el.dataset.madmin.split('|');
+      const rows = S.duty && S.duty.monthly && S.duty.monthly[ym];
+      const row = rows && rows[+rIdxStr];
+      if (row) { snap(); row.admin = el.value; save(); }
+      return;
+    }
     if (el.dataset.pcls) { if (pop) { pop.cls = el.value; renderPop(); } return; }
     if (el.dataset.pt) {
       const c = S.cards.find(x => x.id === el.dataset.pt); if (!c) return;
@@ -2827,6 +3247,23 @@
     document.querySelectorAll('.dtgt,.dswp,.drop-over,.dragging').forEach(x => x.classList.remove('dtgt', 'dswp', 'drop-over', 'dragging'));
   });
 
+  /* Çift tık ile anında ders kilitleme / kilit açma */
+  document.addEventListener('dblclick', e => {
+    const td = e.target.closest && e.target.closest('td[data-act="cell"][data-id]');
+    if (!td || running) return;
+    const bid = td.dataset.id;
+    if (!bid || !S.place[bid]) return;
+    e.preventDefault();
+    snap();
+    S.place[bid].lock = !S.place[bid].lock;
+    const isLocked = S.place[bid].lock;
+    const cd = EP.cardMap(S).get(bid.split(':')[0]);
+    sel = '';
+    closePop();
+    commit();
+    toast(`${cd ? cName(cd.classId) + ' ' + SS(cd.subj) : 'Ders'} ${isLocked ? 'kilitlendi' : 'kilidi açıldı'}.`);
+  });
+
   document.addEventListener('contextmenu', e => {
     const td = e.target.closest && e.target.closest('td[data-act="cell"]');
     if (!td || !['auto_schedule', 'manual_schedule', 'timetables'].includes(step) || running) return;
@@ -2887,6 +3324,10 @@
       if (running === 'native') {
         live.engine = engineId;
         if (progress && progress.assignedBlocks != null) live.placed = progress.assignedBlocks;
+        if (progress && progress.bestPlacements && Object.keys(progress.bestPlacements).length > 0) {
+          live.bestPlacements = progress.bestPlacements;
+          live.placed = Object.keys(progress.bestPlacements).length;
+        }
         if (progress && progress.message) live.status = progress.message;
         upLive();
       }

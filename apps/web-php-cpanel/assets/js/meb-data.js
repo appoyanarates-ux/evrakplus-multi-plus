@@ -433,11 +433,48 @@
     ['auto_schedule', 'Dağıtım ve Program'],
     ['timetables', 'Haftalık Ders Programları'],
     ['analytics', 'Analiz ve İstatistikler'],
+    ['duty', 'Okul Nöbeti'],
     ['reports', 'Raporlar ve Çıktılar'],
     ['backup_sync', 'Yedekleme ve Senkronizasyon'],
     ['account', 'EvrakPlus Hesabım'],
     ['system', 'Sistem ve Güncellemeler'],
     ['help', 'Yardım ve Destek']
+  ];
+
+  /* 32 canlı, birbirinden keskin biçimde ayırt edilen ders rengi: [açık arka plan, canlı vurgu şeridi, koyu arka plan, koyu vurgu] */
+  const VIVID_PALETTE = [
+    ['#ffd1dc', '#e11d48', '#5c1428', '#fb7185'], // 0  Kırmızı-Pembe
+    ['#bae6fd', '#0284c7', '#0c3a5c', '#38bdf8'], // 1  Canlı Gök Mavisi
+    ['#bbf7d0', '#16a34a', '#0f4725', '#4ade80'], // 2  Zümrüt Yeşili
+    ['#fde68a', '#d97706', '#543408', '#fbbf24'], // 3  Altın Sarısı
+    ['#ddd6fe', '#7c3aed', '#341c6b', '#a78bfa'], // 4  Canlı Mor
+    ['#fed7aa', '#ea580c', '#5e2609', '#fb923c'], // 5  Turuncu
+    ['#99f6e4', '#0d9488', '#0a4440', '#2dd4bf'], // 6  Turkuaz
+    ['#f5d0fe', '#c026d3', '#52155c', '#e879f9'], // 7  Fuşya / Eflatun
+    ['#d9f99d', '#65a30d', '#2b4709', '#a3e635'], // 8  Limon Yeşili
+    ['#c7d2fe', '#4f46e5', '#212266', '#818cf8'], // 9  Çivit Mavisi
+    ['#fecaca', '#dc2626', '#5c1616', '#f87171'], // 10 Parlak Kırmızı
+    ['#a5f3fc', '#0891b2', '#0b4252', '#22d3ee'], // 11 Camgöbeği
+    ['#fbcfe8', '#db2777', '#5c1439', '#f472b6'], // 12 Şeker Pembe
+    ['#fef08a', '#ca8a04', '#4d3c07', '#facc15'], // 13 Limon Sarısı
+    ['#a7f3d0', '#059669', '#0a4733', '#34d399'], // 14 Nane Yeşili
+    ['#bfdbfe', '#2563eb', '#122f6b', '#60a5fa'], // 15 Kobalt Mavi
+    ['#e9d5ff', '#9333ea', '#411869', '#c084fc'], // 16 Lavanta Mor
+    ['#fdba74', '#c2410c', '#5c2208', '#fb923c'], // 17 Mandalina
+    ['#67e8f9', '#0e7490', '#0a3e4d', '#22d3ee'], // 18 Okyanus Camgöbeği
+    ['#86efac', '#15803d', '#0d4222', '#4ade80'], // 19 Çimen Yeşili
+    ['#fda4af', '#be123c', '#591224', '#fb7185'], // 20 Mercan Kırmızı
+    ['#93c5fd', '#1d4ed8', '#112a63', '#60a5fa'], // 21 Kraliyet Mavisi
+    ['#fcd34d', '#b45309', '#4f2c07', '#fbbf24'], // 22 Kehribar
+    ['#c4b5fd', '#6d28d9', '#2e1663', '#a78bfa'], // 23 Menekşe
+    ['#5eead4', '#0f766e', '#083d39', '#2dd4bf'], // 24 Deniz Yeşili
+    ['#f0abfc', '#a21caf', '#4d1357', '#e879f9'], // 25 Orkide
+    ['#bef264', '#4d7c0f', '#243d08', '#a3e635'], // 26 Fıstık Yeşili
+    ['#a5b4fc', '#4338ca', '#1e1d5e', '#818cf8'], // 27 Gece Mavisi
+    ['#fca5a5', '#b91c1c', '#541414', '#f87171'], // 28 Yakut
+    ['#7dd3fc', '#0369a1', '#0a3754', '#38bdf8'], // 29 Buz Mavisi
+    ['#f9a8d4', '#be185d', '#541133', '#f472b6'], // 30 Gül Pembe
+    ['#6ee7b7', '#047857', '#083d2c', '#34d399']  // 31 Çam Yeşili
   ];
 
   const STAFF_ROLES = [
@@ -829,7 +866,7 @@
   Object.assign(EP, {
     CORE, CX, WSRC, newWorker,
     EVRAKPLUS_LOGIN_URL, EVRAKPLUS_SITE_URL,
-    GUN, GK, DONEM, MENUS, STAFF_ROLES, SOCIAL_CLUB_GROUPS, SOCIAL_CLUBS, ENGINE_META, SOLVER_MODES, TIME_PRESETS, ROOM_TYPES,
+    GUN, GK, DONEM, MENUS, VIVID_PALETTE, STAFF_ROLES, SOCIAL_CLUB_GROUPS, SOCIAL_CLUBS, ENGINE_META, SOLVER_MODES, TIME_PRESETS, ROOM_TYPES,
     SRC, GRP, TYPES, REHB, SO_SET, SHORTS, BASE_BRANS, LEGACY, LEG_SEC, TPL,
     branchOf, autoShort, trSlug
   });

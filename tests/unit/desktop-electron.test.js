@@ -68,7 +68,8 @@ test('Electron gömülü motor yolları ve electron-builder ASAR-dışı güvenl
   assert.equal(builderCfg.executableName, 'DersMatrixUltimate');
   assert.equal(builderCfg.win.icon, 'build/icon.ico');
   assert.ok(builderCfg.nsis.artifactName.includes('Setup'));
-  assert.ok(builderCfg.portable.artifactName.includes('Portable'));
+  assert.equal(builderCfg.portable, undefined, 'Portable target must be disabled');
+  assert.equal(builderCfg.win.target.some(t => t.target === 'portable'), false);
 
   // main.js güvenlik ve yerel PDF ayarlarının statik denetimi
   const mainSrc = fs.readFileSync(path.resolve('apps/desktop-electron/src/main.js'), 'utf8');

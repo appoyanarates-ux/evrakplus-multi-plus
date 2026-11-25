@@ -64,7 +64,7 @@
     return {
       v: 3,
       schemaVersion: 3,
-      appVersion: '2.1.0',
+      appVersion: '2.2.0',
       id: uid(),
       revision: 1,
       updatedAt: new Date().toISOString(),
@@ -83,7 +83,7 @@
       blk: {},
       blkMode: 'fixed',
       report: { paper: 'A4' },
-      duty: { places: ['Bahçe', 'Koridor'], admin: {} },
+      duty: { places: ['Bahçe', 'Koridor'], admin: {}, strategy: 'min_lessons', avoidZeroDay: true, month: '', monthlyMode: 'rotate', monthly: {} },
       rules: [
         { id: uid(), type: 'diff', on: true, level: 'HARD', weight: 1000000 },
         { id: uid(), type: 'lunch', on: true, level: 'HIGH', weight: 100 }
@@ -96,6 +96,7 @@
         view: 'sinif', ent: '', cf: '', tf: '', kf: '', only: false,
         sel: '', amode: 'brans_ek', stab: 'genel', dtab: 'sinif', htab: 'z', rtab: 'cp', csel: '',
         tsel: '', tpCls: '', tpQ: '', tpOnlyBranch: false, tpHideOther: false,
+        unTab: 'class', dutyTab: 'weekly',
         openCls: '', openRoom: '', diagOpen: false, pmLock: false, bused: false,
         theme: 'auto'
       }
@@ -293,7 +294,8 @@
       if (bk && bk.mode === 'auto') bk.pats = ensure2(bk.pats, +k.split('|')[1]);
     }
     if (!o.report) o.report = { paper: 'A4' };
-    if (!o.duty) o.duty = { places: ['Bahçe', 'Koridor'], admin: {} };
+    if (!o.duty) o.duty = { places: ['Bahçe', 'Koridor'], admin: {}, strategy: 'min_lessons', avoidZeroDay: true, month: '', monthlyMode: 'rotate', monthly: {} };
+    else o.duty = Object.assign({ places: ['Bahçe', 'Koridor'], admin: {}, strategy: 'min_lessons', avoidZeroDay: true, month: '', monthlyMode: 'rotate', monthly: {} }, o.duty);
     if (!Array.isArray(o.rules)) o.rules = b.rules;
     if (!o.rules.some(r => r.type === 'diff')) o.rules.unshift({ id: uid(), type: 'diff', on: true, level: 'HARD', weight: 1000000 });
     o.ui = Object.assign(b.ui, o.ui || {});

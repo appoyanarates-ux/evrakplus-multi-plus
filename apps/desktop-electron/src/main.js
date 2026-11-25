@@ -9,7 +9,7 @@ import { SqliteProjectStore } from './sqlite-store.js';
 import { resolveEmbeddedPaths } from './engine-paths.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const APP_VERSION = '2.1.0';
+export const APP_VERSION = '2.2.0';
 export const APP_NAME = 'DersMatrix Ultimate';
 
 async function loadMultiSolver() {
@@ -459,6 +459,19 @@ function registerIpcHandlers() {
     const res = await engine.solve(payload.project, payload.options || {}, {
       onEngineProgress: (engineId, progress) => {
         mainWindow?.webContents.send('solver:progress', { engineId, progress });
+      },
+      onBestUpdated: best => {
+        if (best && best.placements) {
+          mainWindow?.webContents.send('solver:progress', {
+            engineId: best.engine || 'ortools',
+            progress: {
+              assignedBlocks: Object.keys(best.placements).length,
+              bestPlacements: best.placements,
+              qualityScore: best.evaluation?.qualityScore ?? 0,
+              message: `Ara çözüm bulundu (${Object.keys(best.placements).length} blok)`
+            }
+          });
+        }
       }
     });
     if (res.bestResult?.evaluation?.validation?.isValid && payload.project.id) {

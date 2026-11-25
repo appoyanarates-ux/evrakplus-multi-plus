@@ -1,5 +1,19 @@
 # DersMatrix Ultimate (by EvrakPlus) — Değişiklik Geçmişi (CHANGELOG)
 
+## [2.2.0] - 2026-11-25
+
+### Yenilikler ve İyileştirmeler
+- **Çift Tıkla Ders Kilitleme/Açma & Toplu Kilit Seçimi**: Dağıtım ve Program şablonlarında herhangi bir derse çift tıklayarak anında kilitleyip açma; `Ctrl+Tık` veya **Toplu Kilit Seçimi** modu ile birden fazla dersi seçip topluca kilitleme, kilidini açma veya tersine çevirme (kilitli→açık, açık→kilitli).
+- **Gerçek Masaüstü "Maksimumda Bitir"**: Yerel optimizasyon devam ederken **Maksimumda bitir** düğmesine basıldığında şu ana kadar dağıtılan tüm dersler şablona işlenir, dağıtılmayanlar ise alttaki **Dağıtılamayan dersler** alanına düşer.
+- **Sınıf Bazında & Öğretmen Bazında Dağıtılamayan Dersler**: Hangi sınıfın ve hangi öğretmenin hangi derslerinin yerleşmediği, saat sayısı ve çakışma nedenleriyle ayrı sekmelerde (`Sınıfa göre` / `Öğretmene göre` / `Tüm liste`) eksiksiz gösterilir.
+- **Canlı 32 Renkli Ders Paleti**: Dersler birbirinden keskin biçimde ayırt edilen canlı renkler ve sol vurgu şeritleriyle hem program şablonunda hem WhatsApp PNG çıktısında gösterilir.
+- **Yeni `Okul Nöbeti` Oluşturma Sayfası (Haftalık & Aylık)**:
+  - Öğretmenin haftalık ders programına göre **en az dersinin olduğu güne**, **en çok dersinin olduğu güne** veya **dengeli** dağıtım + `0 dersli (boş) güne nöbet verme` kuralı.
+  - Her öğretmen için tek tıkla **Nöbet Tutar / Nöbet Tutmaz** anahtarı (Okul Müdürü, Müdür Yardımcıları ve Rehber Öğretmenler otomatik muaf).
+  - **Haftalık sabit nöbet** ve **Aylık nöbet çizelgesi** (sabit haftalık veya haftadan haftaya nöbet yeri rotasyonlu, tarih bazında düzenlenebilir) + doğrudan PDF, Yazdır, Excel ve Word çıktıları.
+- **Yardım ve Destek ↔ EvrakPlus Hesabım Uyumu**: Uygulama içi EvrakPlus oturum durumu `EvrakPlus Hesabım`, üst çubuk ve `Yardım ve Destek` sayfasında anlık olarak birebir senkronize çalışır.
+- **Sadeleştirilmiş Windows Dağıtımı**: Taşınabilir (Portable) sürüm kaldırıldı; yalnızca imzalı bütünlük özetli Windows Kurulum (`DersMatrix-Ultimate-2.2.0-Setup.exe`) yayınlanır.
+
 ## [2.1.0] - 2026-11-25
 
 ### Yenilikler ve İyileştirmeler

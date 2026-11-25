@@ -197,38 +197,79 @@
       <p class="note">Nöbet çizelgesi ${fmtD(r.gecerli)} tarihinden itibaren geçerlidir. Okul müdürü ve müdür yardımcıları öğretmen nöbet yerlerinde görevlendirilmez; müdür yardımcıları nöbetçi idareci olarak görev yapar.</p><div class="sig">${sigL(S)}${sigR(S)}</div></section>`;
   }
 
-  function dutyAuto(S) {
-    const D = +S.school.D, pl = dutyPlaces(S), o = EP.occ(S);
-    const cnt = Array.from({ length: D }, () => Array(pl.length).fill(0));
-    const per = t => {
-      const G = o.tG[t.id] || {}, a = Array(D).fill(0);
-      for (const k in G) { const d = +k.split('-')[0]; if (d < D) a[d]++; }
-      return a;
-    };
+  const DUTY_STRATEGIES = [
+    ['min_lessons', 'En az dersinin olduğu güne (boş gün hariç)'],
+    ['max_lessons', 'En çok dersinin olduğu güne'],
+    ['balanced', 'Tüm gün ve nöbet yerlerine dengeli dağıt']
+  ];
+  const AY_AD = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 
-    // 1) İdareciler ve muaf öğretmenler öğretmen nöbetinden çıkarılır
+  function teacherDailyLoads(S, o) {
+    const D = +S.school.D || 5, occ = o || EP.occ(S), out = {};
+    for (const t of S.teachers) {
+      const G = occ.tG[t.id] || {}, arr = Array(D).fill(0);
+      for (const k in G) { const d = +k.split('-')[0]; if (d >= 0 && d < D) arr[d]++; }
+      out[t.id] = arr;
+    }
+    return out;
+  }
+
+  function dutyAuto(S, opts) {
+    const D = +S.school.D || 5, pl = dutyPlaces(S), o = EP.occ(S);
+    const dCfg = S.duty = Object.assign({ places: pl, admin: {}, strategy: 'min_lessons', avoidZeroDay: true, month: '', monthlyMode: 'rotate', monthly: {} }, S.duty || {});
+    const strategy = (opts && opts.strategy) || dCfg.strategy || 'min_lessons';
+    const avoidZeroDay = (opts && opts.avoidZeroDay != null) ? Boolean(opts.avoidZeroDay) : (dCfg.avoidZeroDay !== false);
+    const loadsByT = teacherDailyLoads(S, o);
+    const cnt = Array.from({ length: D }, () => Array(pl.length).fill(0));
+
+    // 1) İdareciler ve nöbet tutmayan (muaf) öğretmenler öğretmen nöbetinden çıkarılır
     for (const t of S.teachers) {
       if (isDutyExempt(S, t)) { t.dutyD = ''; t.dutyP = ''; }
     }
 
-    // 2) Yalnızca nöbet tutacak öğretmenlere nöbet günü ve yeri dağıtılır
+    // 2) Yalnızca nöbet tutacak öğretmenlere ders programına göre nöbet günü ve yeri dağıtılır
     const eligible = S.teachers.filter(t => !isDutyExempt(S, t));
     const list = eligible.map(t => {
-      const a = per(t);
+      const a = loadsByT[t.id] || Array(D).fill(0);
       const open = Array.from({ length: D }, (_, d) => Array.from({ length: +S.school.P }, (_, p) => (t.av || {})[d + '-' + p] !== 1).some(Boolean));
-      const days = [...Array(D).keys()].filter(d => a[d] > 0);
-      return { t, a, days: days.length ? days : [...Array(D).keys()].filter(d => open[d]) };
+      const taughtDays = [...Array(D).keys()].filter(d => a[d] > 0);
+      const openDays = [...Array(D).keys()].filter(d => open[d]);
+      const days = (avoidZeroDay && taughtDays.length) ? taughtDays : (openDays.length ? openDays : [...Array(D).keys()]);
+      return { t, a, days };
     }).filter(x => x.days.length).sort((x, y) => x.days.length - y.days.length);
 
     let n = 0;
     for (const x of list) {
-      const dt = x.days.reduce((b, d) => {
-        const s = cnt[d].reduce((u, v) => u + v, 0), sb = cnt[b].reduce((u, v) => u + v, 0);
-        return s < sb || (s === sb && x.a[d] > x.a[b]) ? d : b;
-      }, x.days[0]);
-      const pi = cnt[dt].indexOf(Math.min(...cnt[dt]));
-      cnt[dt][pi]++;
-      x.t.dutyD = String(dt);
+      const dayTotal = d => cnt[d].reduce((u, v) => u + v, 0);
+      let bestDay = x.days[0];
+
+      if (strategy === 'min_lessons') {
+        // Önce en az dersinin olduğu gün (en az yoğun nöbet günü eşitlik bozar)
+        const minL = Math.min(...x.days.map(d => x.a[d]));
+        const nearMin = x.days.filter(d => x.a[d] <= minL + 1);
+        bestDay = nearMin.reduce((b, d) => {
+          if (x.a[d] !== x.a[b]) return x.a[d] < x.a[b] ? d : b;
+          return dayTotal(d) < dayTotal(b) ? d : b;
+        }, nearMin[0]);
+      } else if (strategy === 'max_lessons') {
+        // Önce en çok dersinin olduğu gün (en az yoğun nöbet günü eşitlik bozar)
+        const maxL = Math.max(...x.days.map(d => x.a[d]));
+        const nearMax = x.days.filter(d => x.a[d] >= maxL - 1);
+        bestDay = nearMax.reduce((b, d) => {
+          if (x.a[d] !== x.a[b]) return x.a[d] > x.a[b] ? d : b;
+          return dayTotal(d) < dayTotal(b) ? d : b;
+        }, nearMax[0]);
+      } else {
+        // Dengeli: en az görevli olan gün, eşitlikte dersi olan/yüksek olan gün
+        bestDay = x.days.reduce((b, d) => {
+          const s = dayTotal(d), sb = dayTotal(b);
+          return s < sb || (s === sb && x.a[d] > x.a[b]) ? d : b;
+        }, x.days[0]);
+      }
+
+      const pi = cnt[bestDay].indexOf(Math.min(...cnt[bestDay]));
+      cnt[bestDay][pi]++;
+      x.t.dutyD = String(bestDay);
       x.t.dutyP = pl[pi];
       n++;
     }
@@ -239,11 +280,75 @@
       ...S.teachers.filter(t => t.role === 'mudur_yardimcisi').map(t => (t.name || '').trim()).filter(Boolean)
     ])];
     if (vps.length) {
-      S.duty = S.duty || { places: pl, admin: {} };
-      S.duty.admin = S.duty.admin || {};
-      for (let d = 0; d < D; d++) S.duty.admin[d] = vps[d % vps.length];
+      dCfg.admin = dCfg.admin || {};
+      for (let d = 0; d < D; d++) dCfg.admin[d] = vps[d % vps.length];
     }
     return n;
+  }
+
+  function defaultYearMonth() {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  }
+
+  function buildMonthlyDuty(S, yearMonth, mode) {
+    const ym = yearMonth || (S.duty && S.duty.month) || defaultYearMonth();
+    const mMode = mode || (S.duty && S.duty.monthlyMode) || 'rotate';
+    const [yr, mo] = ym.split('-').map(Number);
+    const D = +S.school.D || 5, pl = dutyPlaces(S);
+    const adm = (S.duty && S.duty.admin) || {};
+    const eligible = S.teachers.filter(t => !isDutyExempt(S, t) && dutyOf(t).d >= 0);
+
+    // Eğer henüz haftalık nöbet dağıtılmadıysa önce haftalık dağıtımı yap
+    if (!eligible.length && S.teachers.some(t => !isDutyExempt(S, t))) {
+      dutyAuto(S);
+    }
+    const assigned = S.teachers.filter(t => !isDutyExempt(S, t) && dutyOf(t).d >= 0);
+    const daysInMonth = new Date(yr, mo, 0).getDate();
+    const rows = [];
+    const weekSeen = {};
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dt = new Date(yr, mo - 1, day, 12, 0, 0);
+      const jsDow = dt.getDay(); // 0=Sun, 1=Mon...6=Sat
+      const d = jsDow === 0 ? 6 : jsDow - 1; // 0=Pzt..5=Cmt, 6=Paz
+      if (d >= D) continue;
+      const wIdx = weekSeen[d] || 0;
+      weekSeen[d] = wIdx + 1;
+      const iso = `${yr}-${String(mo).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const posts = {};
+      for (const p of pl) posts[p] = [];
+      for (const t of assigned) {
+        const du = dutyOf(t);
+        if (du.d !== d) continue;
+        const baseIdx = Math.max(0, pl.indexOf(du.place || pl[0]));
+        const targetIdx = mMode === 'rotate' ? (baseIdx + wIdx) % pl.length : baseIdx;
+        posts[pl[targetIdx]].push(t.name);
+      }
+      rows.push({ date: iso, dayNum: day, dow: d, weekNum: wIdx + 1, posts, admin: adm[d] || '' });
+    }
+
+    S.duty = S.duty || { places: pl, admin: {}, monthly: {} };
+    S.duty.month = ym;
+    S.duty.monthlyMode = mMode;
+    S.duty.monthly = S.duty.monthly || {};
+    S.duty.monthly[ym] = rows;
+    return rows;
+  }
+
+  function docMonthlyDuty(S, yearMonth, opts) {
+    const ym = yearMonth || (S.duty && S.duty.month) || defaultYearMonth();
+    const [yr, mo] = ym.split('-').map(Number);
+    const pl = dutyPlaces(S), r = rep(S), wm = Boolean(opts && opts.watermark);
+    const rows = (S.duty && S.duty.monthly && S.duty.monthly[ym]) || buildMonthlyDuty(S, ym);
+    const ayLabel = `${AY_AD[(mo || 1) - 1] || ''} ${yr}`.toLocaleUpperCase('tr');
+    const html = `<section class="doc portrait"><div class="ttl">${EP.esc(upTR(kurumAdi(S)))} MÜDÜRLÜĞÜ<br>${EP.esc(ayLabel)} AYI ÖĞRETMEN NÖBET ÇİZELGESİ</div>
+      <table class="g" style="font-size:11px"><thead><tr><th style="width:82px"><b>Tarih</b></th><th style="width:74px"><b>Gün</b></th>${pl.map(p => `<th><b>${EP.esc(p)}</b></th>`).join('')}<th><b>Nöbetçi İdareci</b></th></tr></thead><tbody>
+      ${rows.map(row => `<tr><td style="height:26px">${fmtD(row.date)}</td><td class="day" style="height:26px;font-size:11px">${EP.GUN[row.dow]}</td>${pl.map(p => `<td style="height:26px;font-size:11px">${((row.posts || {})[p] || []).map(nm => EP.esc(upTR(nm))).join(', ')}</td>`).join('')}<td style="height:26px;font-size:11px">${EP.esc(row.admin || '')}</td></tr>`).join('')}
+      </tbody></table>
+      <p class="note">Yukarıdaki aylık nöbet çizelgesi ${EP.esc(AY_AD[(mo || 1) - 1] || '')} ${yr} ayı boyunca uygulanacaktır. Okul müdürü, müdür yardımcıları ve nöbetten muaf öğretmenler öğretmen nöbet yerlerinde görevlendirilmemiştir.</p>
+      <div class="sig">${sigL(S)}${sigR(S)}</div></section>`;
+    return decorateWatermark(html, wm);
   }
 
   function decorateWatermark(html, watermark) {
@@ -352,8 +457,14 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
       for (let d = 0; d < D; d++) {
         const c = G[d + '-' + p], cx = 48 + lw + d * cw + 4, cy = y + 4, w = cw - 8, h = ch - 8;
         const i = c ? SK.indexOf(c.card.subj) : -1;
-        x.fillStyle = c ? `hsl(${Math.round((i * 137.5 + 18) % 360)} 78% 86%)` : '#f0f1f3';
+        const pal = EP.VIVID_PALETTE || [];
+        const bgCol = c ? (i >= 0 && i < pal.length ? pal[i][0] : `hsl(${Math.round((Math.max(0, i) * 137.5 + 18) % 360)} 90% 78%)`) : '#f0f1f3';
+        x.fillStyle = bgCol;
         x.beginPath(); if (x.roundRect) x.roundRect(cx, cy, w, h, 12); else x.rect(cx, cy, w, h); x.fill();
+        if (c && i >= 0 && i < pal.length) {
+          x.fillStyle = pal[i][1];
+          x.fillRect(cx, cy + 8, 7, h - 16);
+        }
         if (c) {
           x.fillStyle = '#14171c'; x.textAlign = 'center'; x.font = '700 30px Inter, Arial';
           x.fillText(EP.SS(S, c.card.subj), cx + w / 2, cy + h / 2 - 2);
@@ -493,8 +604,9 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
   }
 
   Object.assign(EP, {
-    DOC_CSS, RTABS, rep, donemText, myList, dutyOf, dutyPlaces,
+    DOC_CSS, RTABS, DUTY_STRATEGIES, AY_AD, rep, donemText, myList, dutyOf, dutyPlaces,
     staffAdminKind, isDutyExempt, dutyExemptReason, clubOptions, clubAuto,
+    teacherDailyLoads, defaultYearMonth, buildMonthlyDuty, docMonthlyDuty,
     docClass, docTeacher, docSheet, docDuty, dutyAuto, docsFor, docFile,
     csvExport, excelExport, wordExport, pngCanvas, vQuality, vRapor
   });
