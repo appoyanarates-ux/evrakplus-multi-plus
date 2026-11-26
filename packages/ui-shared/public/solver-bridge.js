@@ -1097,6 +1097,173 @@
     return { i, from, tg, sw, m };
   }
 
+  /* e-Okul / Excel / CSV Toplu Veri İçe Aktarım Ayrıştırıcıları */
+  function normTrKey(str) {
+    return String(str || '')
+      .replace(/^\uFEFF/, '')
+      .toLocaleLowerCase('tr')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/ı/g, 'i')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+  }
+
+  function splitDelimitedLine(line, delim) {
+    const out = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
+        else inQ = !inQ;
+      } else if (ch === delim && !inQ) {
+        out.push(cur.trim());
+        cur = '';
+      } else {
+        cur += ch;
+      }
+    }
+    out.push(cur.trim());
+    return out;
+  }
+
+  function detectDelimiter(lines) {
+    const sample = lines.slice(0, 6);
+    const counts = { '\t': 0, ';': 0, ',': 0 };
+    for (const l of sample) {
+      counts['\t'] += (l.match(/\t/g) || []).length;
+      counts[';'] += (l.match(/;/g) || []).length;
+      counts[','] += (l.match(/,/g) || []).length;
+    }
+    if (counts['\t'] > 0 && counts['\t'] >= counts[';'] && counts['\t'] >= counts[',']) return '\t';
+    if (counts[';'] > 0 && counts[';'] >= counts[',']) return ';';
+    if (counts[','] > 0) return ',';
+    return '\t';
+  }
+
+  function matchBranchName(rawBranch) {
+    const cleaned = String(rawBranch || '').trim();
+    if (!cleaned) return 'Matematik';
+    const branches = Array.isArray(EP.BASE_BRANS) ? EP.BASE_BRANS : [];
+    const exact = branches.find(b => b.toLocaleLowerCase('tr') === cleaned.toLocaleLowerCase('tr'));
+    if (exact) return exact;
+    const nk = normTrKey(cleaned);
+    const byNorm = branches.find(b => normTrKey(b) === nk);
+    if (byNorm) return byNorm;
+    const partial = branches.find(b => normTrKey(b).includes(nk) || nk.includes(normTrKey(b)));
+    return partial || cleaned;
+  }
+
+  function detectStaffRole(rawRole, branch) {
+    const r = normTrKey(rawRole);
+    if (r.includes('mudur yard') || r === 'md yrd' || r === 'my') return 'mudur_yardimcisi';
+    if (r.includes('mudur')) return 'mudur';
+    if (r.includes('rehber') || r.includes('pdr') || normTrKey(branch).includes('rehber')) return 'rehber';
+    return 'ogretmen';
+  }
+
+  function parseBulkTeachers(text, S) {
+    const raw = String(text || '').replace(/^\uFEFF/, '');
+    const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    if (!lines.length) return [];
+    const delim = detectDelimiter(lines);
+    const existing = new Set((S && S.teachers ? S.teachers : []).map(t => normTrKey(t.name)));
+    const seenBatch = new Set();
+    const rows = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const cols = splitDelimitedLine(lines[i], delim);
+      if (!cols.length || !cols[0]) continue;
+      // Başlık satırını atla
+      const c0n = normTrKey(cols[0]);
+      if (i === 0 && (c0n === 'ad soyad' || c0n === 'adi soyadi' || c0n === 'ogretmen' || c0n === 'ogretmen adi' || c0n === 'sira' || c0n === 'no')) {
+        continue;
+      }
+      // İlk sütun sıra numarasıysa (1, 2, 3...) kaydır
+      const offset = (/^\d+\.?$/.test(cols[0]) && cols.length >= 2) ? 1 : 0;
+      const name = String(cols[offset] || '').trim();
+      if (!name) continue;
+      const rawBranch = cols[offset + 1] || '';
+      const rawRole = cols[offset + 2] || '';
+      const rawDuty = normTrKey(cols[offset + 3] || '');
+
+      const branch = matchBranchName(rawBranch);
+      const role = detectStaffRole(rawRole, branch);
+      const dutyExempt = role !== 'ogretmen' || rawDuty === 'hayir' || rawDuty === 'muaf' || rawDuty === 'tutmaz' || rawDuty === '0';
+      const key = normTrKey(name);
+      const duplicate = existing.has(key) || seenBatch.has(key);
+      seenBatch.add(key);
+
+      rows.push({ name, branch, role, dutyExempt, duplicate });
+    }
+    return rows;
+  }
+
+  function inferGradeFromClassName(name, fallbackGrade) {
+    const s = String(name || '').trim();
+    const nk = normTrKey(s);
+    if (nk.startsWith('hz') || nk.startsWith('hazirlik')) return 0;
+    const m = /^(\d{1,2})\b/.exec(s) || /(\d{1,2})\s*[\/\-]/.exec(s);
+    if (m) {
+      const g = Number(m[1]);
+      if (g >= 0 && g <= 12) return g;
+    }
+    return fallbackGrade != null ? Number(fallbackGrade) : 5;
+  }
+
+  function parseBulkClasses(text, S) {
+    const raw = String(text || '').replace(/^\uFEFF/, '');
+    const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    if (!lines.length) return [];
+    const delim = detectDelimiter(lines);
+    const T = S ? typeOf(S) : null;
+    const defaultGrade = T && T.grades && T.grades.length ? T.grades[0] : 5;
+    const existing = new Set((S && S.classes ? S.classes : []).map(c => normTrKey(c.name)));
+    const seenBatch = new Set();
+    const rows = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const cols = splitDelimitedLine(lines[i], delim);
+      if (!cols.length || !cols[0]) continue;
+      const c0n = normTrKey(cols[0]);
+      if (i === 0 && (c0n === 'sube' || c0n === 'sinif' || c0n === 'sinif adi' || c0n === 'sube adi' || c0n === 'sira' || c0n === 'no')) {
+        continue;
+      }
+      const offset = (/^\d+\.?$/.test(cols[0]) && cols.length >= 2) ? 1 : 0;
+      const name = String(cols[offset] || '').trim();
+      if (!name) continue;
+      const rawGrade = cols[offset + 1] || '';
+      const rawRehber = cols[offset + 2] || '';
+      const rawShift = normTrKey(cols[offset + 3] || '');
+
+      let grade;
+      if (rawGrade && (normTrKey(rawGrade).startsWith('hz') || normTrKey(rawGrade).startsWith('hazirlik'))) {
+        grade = 0;
+      } else if (rawGrade && /^\d{1,2}$/.test(rawGrade.trim())) {
+        grade = Math.max(0, Math.min(12, Number(rawGrade.trim())));
+      } else {
+        grade = inferGradeFromClassName(name, defaultGrade);
+      }
+
+      let rehberId = '';
+      let rehberName = rawRehber.trim();
+      if (rehberName && S && Array.isArray(S.teachers)) {
+        const rn = normTrKey(rehberName);
+        const found = S.teachers.find(t => normTrKey(t.name) === rn) || S.teachers.find(t => normTrKey(t.name).includes(rn));
+        if (found) { rehberId = found.id; rehberName = found.name; }
+      }
+
+      const shift = rawShift.includes('sabah') ? 'morning' : rawShift.includes('oglen') ? 'afternoon' : 'full';
+      const key = normTrKey(name);
+      const duplicate = existing.has(key) || seenBatch.has(key);
+      seenBatch.add(key);
+
+      rows.push({ name, grade, shift, rehberId, rehberName, duplicate });
+    }
+    return rows;
+  }
+
   Object.assign(EP, {
     esc, uid, hrsList, patSum, patFor, parsePat, patOk, autoDefault, partitions, minPats, ensure2,
     blank, demo, v3ToState, migrateState, stateToV3Project, applyV3SolutionToState, sanitizeExportProject,
@@ -1105,6 +1272,7 @@
     autoTimes, times, cardMap, tName, tShort, cName, loads, openOf, classHours, classOpen,
     buildModel, placedCore, occ, SCOPE, modeFor, tMode, tcRulesFor, tcHours, tcViolation, tcAll,
     rehberOf, clsStat, pickTeacher, assignCards, setRehber, rehberAuto, findClassSubjCard, newCard, applyTemplate, closeExtra,
-    lockedIds, lockedInClosed, lockImpact, impactFor, whyText, whyAt, precheck, quality, editInfoFor
+    lockedIds, lockedInClosed, lockImpact, impactFor, whyText, whyAt, precheck, quality, editInfoFor,
+    parseBulkTeachers, parseBulkClasses
   });
 })(typeof window !== 'undefined' ? window : globalThis);

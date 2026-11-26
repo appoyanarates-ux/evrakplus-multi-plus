@@ -39,6 +39,36 @@ test('SqliteProjectStore: yerel SQLite CRUD, çözüm geçmişi ve KVKK token te
     assert.equal(history[0].engine, 'ortools');
     assert.equal(history[0].qualityScore, 91.5);
 
+    // Kayıtlı ders dağıtımları (saved_plans) CRUD
+    const sp1 = store.saveSavedPlan(saved.id, {
+      id: 'sp-001',
+      name: '1. Dönem Başlangıç',
+      note: 'Tüm sınıflar tam yerleşik',
+      savedAt: '2026-11-26T10:00:00.000Z',
+      placed: 120,
+      total: 120,
+      locked: 12,
+      place: { 'a1:0': { d: 0, p: 0, lock: true } },
+      cardPatterns: { a1: '2+2' }
+    });
+    assert.equal(sp1.id, 'sp-001');
+    const sp2 = store.saveSavedPlan(saved.id, {
+      id: 'sp-002',
+      name: '2. Alternatif',
+      savedAt: '2026-11-26T11:00:00.000Z',
+      placed: 118,
+      total: 120,
+      locked: 8,
+      place: { 'a1:0': { d: 1, p: 2, lock: false } }
+    });
+    assert.equal(sp2.id, 'sp-002');
+    const plans = store.listSavedPlans(saved.id);
+    assert.equal(plans.length, 2);
+    assert.equal(plans[0].id, 'sp-002', 'En yeni kayıtlı dağıtım ilk sırada gelmeli');
+    assert.deepEqual(plans[1].cardPatterns, { a1: '2+2' });
+    assert.equal(store.deleteSavedPlan('sp-001'), true);
+    assert.equal(store.listSavedPlans(saved.id).length, 1);
+
     // Sync meta
     store.setSyncMeta('deviceId', 'dev-001');
     assert.equal(store.getSyncMeta('deviceId'), 'dev-001');
@@ -83,6 +113,10 @@ test('Electron gömülü motor yolları ve electron-builder ASAR-dışı güvenl
   assert.ok(mainSrc.includes('printToPDF'));
   assert.ok(mainSrc.includes("ipcMain.handle('export:pdf'"));
   assert.ok(mainSrc.includes("ipcMain.handle('export:print'"));
+  assert.ok(mainSrc.includes("ipcMain.handle('export:savePngBatch'"));
+  assert.ok(mainSrc.includes("ipcMain.handle('savedPlans:list'"));
+  assert.ok(mainSrc.includes("ipcMain.handle('savedPlans:save'"));
+  assert.ok(mainSrc.includes("ipcMain.handle('savedPlans:delete'"));
   assert.ok(mainSrc.includes('show: true') && mainSrc.includes('parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined'));
   assert.ok(mainSrc.includes('win.webContents.print(') && mainSrc.includes('silent: false'));
   assert.ok(mainSrc.includes('Menu.setApplicationMenu(null)') && mainSrc.includes('mainWindow.removeMenu()'));

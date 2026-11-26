@@ -387,3 +387,74 @@ test('v2.4.0: özel zil saatleri, müdür yardımcısı bilgisi, WhatsApp görse
   assert.equal(migrated.savedPlans.length, 1);
   assert.equal(migrated.savedPlans[0].name, 'Dönem Başı');
 });
+
+test('Aşama 1: PKZIP (UTF-8), kayıtlı dağıtım karşılaştırma ve Excel/e-Okul toplu içe aktarım', () => {
+  const EP = loadUiNamespace();
+
+  // 1. PKZIP (UTF-8 Türkçe dosya adları) doğrulaması
+  const sampleA = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
+  const sampleB = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 9, 8, 7, 6, 5]);
+  const zip = EP.buildZipBytes([
+    { name: 'Sinif-5-A.png', data: sampleA },
+    { name: 'Ogretmen-Şule-İğde.png', data: sampleB }
+  ]);
+  assert.ok(zip instanceof Uint8Array && zip.length > 100);
+  const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
+  assert.equal(view.getUint32(0, true), 0x04034b50);
+  const eocdOff = zip.length - 22;
+  assert.equal(view.getUint32(eocdOff, true), 0x06054b50);
+  assert.equal(view.getUint16(eocdOff + 8, true), 2);
+  const asUtf8 = Buffer.from(zip).toString('utf8');
+  assert.ok(asUtf8.includes('Sinif-5-A.png'));
+  assert.ok(asUtf8.includes('Ogretmen-Şule-İğde.png'));
+
+  // 2. Kayıtlı dağıtım yan yana karşılaştırma (daha az öğretmen boşluğu olan plan kazanmalı)
+  const S = EP.blank();
+  S.school.D = 5;
+  S.school.P = 6;
+  S.classes = [{ id: 'c1', name: '5/A', grade: 5, closed: [] }];
+  S.teachers = [{ id: 't1', name: 'Ali Veli', branch: 'Matematik', av: {} }];
+  S.cards = [
+    { id: 'cd1', classId: 'c1', subj: 'MAT', hours: 1, pattern: '1', teacherId: 't1', kind: 'zorunlu' },
+    { id: 'cd2', classId: 'c1', subj: 'FEN', hours: 1, pattern: '1', teacherId: 't1', kind: 'zorunlu' }
+  ];
+  const compactPlan = { id: 'pA', name: 'Sıkı Plan', place: { 'cd1:0': { d: 0, p: 0, lock: false }, 'cd2:0': { d: 0, p: 1, lock: false } } };
+  const gappyPlan = { id: 'pB', name: 'Boşluklu Plan', place: { 'cd1:0': { d: 0, p: 0, lock: false }, 'cd2:0': { d: 0, p: 4, lock: false } } };
+  const cmp = EP.compareSavedPlans(S, compactPlan, gappyPlan);
+  assert.equal(cmp.a.teacherGaps, 0);
+  assert.equal(cmp.b.teacherGaps, 3);
+  assert.equal(cmp.winner, 'A', 'Ara boşluğu olmayan plan daha yüksek puan almalı');
+
+  // 3. e-Okul / Excel / CSV Öğretmen & Şube toplu içe aktarım ayrıştırıcısı
+  const csvTeachers = [
+    '\uFEFFAd Soyad;Branş;Görev;Nöbet',
+    'Ali Veli;Matematik;Öğretmen;Evet',
+    '1;Ayşe Yılmaz;turkce;Öğretmen;Evet',
+    '2;Mehmet Kaya;Fen Bilimleri;Müdür Yardımcısı;Hayır',
+    '3;Zeynep Ak;Rehberlik;;Evet'
+  ].join('\n');
+  const parsedT = EP.parseBulkTeachers(csvTeachers, S);
+  assert.equal(parsedT.length, 4);
+  assert.equal(parsedT[0].duplicate, true, 'Mevcut öğretmen mükerrer işaretlenmeli');
+  assert.equal(parsedT[1].name, 'Ayşe Yılmaz');
+  assert.equal(parsedT[1].branch, 'Türkçe');
+  assert.equal(parsedT[1].dutyExempt, false);
+  assert.equal(parsedT[2].role, 'mudur_yardimcisi');
+  assert.equal(parsedT[2].dutyExempt, true);
+  assert.equal(parsedT[3].role, 'rehber');
+  assert.equal(parsedT[3].dutyExempt, true);
+
+  const tabClasses = [
+    'Şube\tDüzey\tRehber Öğretmen\tDevre',
+    '5/A\t5\tAli Veli\tTam gün',
+    'Hz/A\t\t\tTam gün',
+    '9/B\t\tAli Veli\tSabahçı'
+  ].join('\n');
+  const parsedC = EP.parseBulkClasses(tabClasses, S);
+  assert.equal(parsedC.length, 3);
+  assert.equal(parsedC[0].duplicate, true, '5/A zaten var');
+  assert.equal(parsedC[1].grade, 0, 'Hz/A Hazırlık (0) olarak algılanmalı');
+  assert.equal(parsedC[2].grade, 9);
+  assert.equal(parsedC[2].shift, 'morning');
+  assert.equal(parsedC[2].rehberId, 't1');
+});

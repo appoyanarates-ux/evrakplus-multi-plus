@@ -422,6 +422,49 @@ async function printHtmlDirect(opts) {
   }
 }
 
+async function savePngBatch(opts = {}) {
+  const files = Array.isArray(opts.files) ? opts.files : [];
+  if (!files.length || files.length > 500) {
+    throw new Error('Geçersiz görsel listesi.');
+  }
+  const safeFolder = String(opts.folderName || 'WhatsApp-Gorselleri')
+    .replace(/[\\/:*?"<>|]+/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim() || 'WhatsApp-Gorselleri';
+
+  const pick = await dialog.showOpenDialog(mainWindow, {
+    title: 'WhatsApp görselleri için hedef klasör seçin',
+    defaultPath: app.getPath('documents'),
+    buttonLabel: 'Bu Klasöre Kaydet',
+    properties: ['openDirectory', 'createDirectory']
+  });
+  if (pick.canceled || !pick.filePaths || !pick.filePaths[0]) {
+    return { ok: false, canceled: true };
+  }
+
+  const outDir = path.join(pick.filePaths[0], safeFolder);
+  fs.mkdirSync(outDir, { recursive: true });
+  let count = 0;
+  for (let i = 0; i < files.length; i++) {
+    const item = files[i];
+    if (!item || typeof item.dataUrl !== 'string') continue;
+    const m = /^data:image\/png;base64,([A-Za-z0-9+/=\r\n]+)$/.exec(item.dataUrl);
+    if (!m) continue;
+    const rawName = String(item.name || `program-${i + 1}.png`)
+      .replace(/[\\/:*?"<>|]+/g, '-')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const fname = rawName.toLowerCase().endsWith('.png') ? rawName : `${rawName}.png`;
+    const buf = Buffer.from(m[1], 'base64');
+    fs.writeFileSync(path.join(outDir, fname), buf);
+    count++;
+  }
+  if (count > 0) {
+    await shell.openPath(outDir).catch(() => {});
+  }
+  return { ok: count > 0, dir: outDir, count };
+}
+
 function resolveAppIcon() {
   const candidates = app.isPackaged
     ? [path.join(process.resourcesPath, 'icon.ico'), path.join(process.resourcesPath, 'icon.png')]
@@ -563,6 +606,19 @@ function registerIpcHandlers() {
   ipcMain.handle('updater:downloadAndInstall', (_ev, info) => downloadAndInstallRelease(info));
   ipcMain.handle('export:pdf', (_ev, opts) => exportHtmlToPdf(opts));
   ipcMain.handle('export:print', (_ev, opts) => printHtmlDirect(opts));
+  ipcMain.handle('export:savePngBatch', (_ev, opts) => savePngBatch(opts));
+  ipcMain.handle('savedPlans:list', (_ev, projectId) => {
+    if (typeof projectId !== 'string' || projectId.length > 120) return [];
+    return store.listSavedPlans(projectId);
+  });
+  ipcMain.handle('savedPlans:save', (_ev, payload) => {
+    if (!payload || !payload.entry) throw new Error('Geçersiz kayıtlı dağıtım isteği');
+    return store.saveSavedPlan(payload.projectId || 'default', payload.entry);
+  });
+  ipcMain.handle('savedPlans:delete', (_ev, planId) => {
+    if (typeof planId !== 'string' || planId.length > 120) return false;
+    return store.deleteSavedPlan(planId);
+  });
 }
 
 async function cleanShutdownAndExit() {

@@ -29,6 +29,10 @@ contextBridge.exposeInMainWorld('evrakplusBridge', Object.freeze({
   downloadAndInstallUpdate: info => ipcRenderer.invoke('updater:downloadAndInstall', info),
   exportPdf: opts => ipcRenderer.invoke('export:pdf', opts),
   printHtml: opts => ipcRenderer.invoke('export:print', opts),
+  savePngBatch: opts => ipcRenderer.invoke('export:savePngBatch', opts),
+  listSavedPlans: projectId => ipcRenderer.invoke('savedPlans:list', projectId),
+  saveSavedPlan: (projectId, entry) => ipcRenderer.invoke('savedPlans:save', { projectId, entry }),
+  deleteSavedPlan: planId => ipcRenderer.invoke('savedPlans:delete', planId),
   onUpdaterEvent: handler => {
     const listener = (_event, payload) => handler(payload);
     ipcRenderer.on('updater:event', listener);

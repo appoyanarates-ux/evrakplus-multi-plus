@@ -814,7 +814,7 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
       <div class="row" style="justify-content:space-between;margin-bottom:8px">
         <div>
           <h3 style="margin:0">WhatsApp Görselleri (.png) — Sınıflar ve Öğretmenler Ayrı Ayrı</h3>
-          <p class="small muted" style="margin-top:2px">Sınıf veya öğretmen programlarını yüksek çözünürlüklü, renkli WhatsApp paylaşım görseli (PNG) olarak tek tek veya toplu indirin.</p>
+          <p class="small muted" style="margin-top:2px">Sınıf veya öğretmen programlarını yüksek çözünürlüklü, renkli WhatsApp paylaşım görseli (PNG) olarak tek tek indirin ya da toplu olarak tek klasöre / ZIP arşivine kaydedin.</p>
         </div>
       </div>
       <div class="grid2" style="gap:10px">
@@ -890,11 +890,201 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
     return head + tabs + sets + waCard + `<div class="row" style="margin-bottom:12px">${ctl}</div>` + extraCard + `<div class="paperwrap">${prev}</div>`;
   }
 
+  /* Sıfır bağımlılıklı PKZIP (store / UTF-8) arşiv üretici — Web toplu WhatsApp PNG ZIP indirme */
+  let _crcTable = null;
+  function crc32(bytes) {
+    if (!_crcTable) {
+      _crcTable = new Uint32Array(256);
+      for (let i = 0; i < 256; i++) {
+        let c = i;
+        for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        _crcTable[i] = c >>> 0;
+      }
+    }
+    let crc = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i++) {
+      crc = _crcTable[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+    }
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  function encodeUtf8(str) {
+    if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(String(str));
+    const s = unescape(encodeURIComponent(String(str)));
+    const out = new Uint8Array(s.length);
+    for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+    return out;
+  }
+
+  function buildZipBytes(entries) {
+    const localParts = [];
+    const centralParts = [];
+    let offset = 0;
+    const now = new Date();
+    const dosTime = ((now.getHours() & 31) << 11) | ((now.getMinutes() & 63) << 5) | ((now.getSeconds() >> 1) & 31);
+    const dosDate = (((Math.max(1980, now.getFullYear()) - 1980) & 127) << 9) | (((now.getMonth() + 1) & 15) << 5) | (now.getDate() & 31);
+
+    for (const ent of entries || []) {
+      const nameBytes = encodeUtf8(ent.name || 'dosya.bin');
+      const data = ent.data instanceof Uint8Array ? ent.data : new Uint8Array(ent.data || []);
+      const crc = crc32(data);
+      const size = data.length;
+
+      const lfh = new Uint8Array(30 + nameBytes.length);
+      const lv = new DataView(lfh.buffer);
+      lv.setUint32(0, 0x04034b50, true);
+      lv.setUint16(4, 20, true);
+      lv.setUint16(6, 0x0800, true); // UTF-8 filename flag
+      lv.setUint16(8, 0, true); // store (PNG already compressed)
+      lv.setUint16(10, dosTime, true);
+      lv.setUint16(12, dosDate, true);
+      lv.setUint32(14, crc, true);
+      lv.setUint32(18, size, true);
+      lv.setUint32(22, size, true);
+      lv.setUint16(26, nameBytes.length, true);
+      lv.setUint16(28, 0, true);
+      lfh.set(nameBytes, 30);
+
+      localParts.push(lfh, data);
+
+      const cdh = new Uint8Array(46 + nameBytes.length);
+      const cv = new DataView(cdh.buffer);
+      cv.setUint32(0, 0x02014b50, true);
+      cv.setUint16(4, 20, true);
+      cv.setUint16(6, 20, true);
+      cv.setUint16(8, 0x0800, true);
+      cv.setUint16(10, 0, true);
+      cv.setUint16(12, dosTime, true);
+      cv.setUint16(14, dosDate, true);
+      cv.setUint32(16, crc, true);
+      cv.setUint32(20, size, true);
+      cv.setUint32(24, size, true);
+      cv.setUint16(28, nameBytes.length, true);
+      cv.setUint16(30, 0, true);
+      cv.setUint16(32, 0, true);
+      cv.setUint16(34, 0, true);
+      cv.setUint16(36, 0, true);
+      cv.setUint32(38, 0, true);
+      cv.setUint32(42, offset, true);
+      cdh.set(nameBytes, 46);
+      centralParts.push(cdh);
+
+      offset += lfh.length + data.length;
+    }
+
+    const cdSize = centralParts.reduce((a, b) => a + b.length, 0);
+    const eocd = new Uint8Array(22);
+    const ev = new DataView(eocd.buffer);
+    ev.setUint32(0, 0x06054b50, true);
+    ev.setUint16(4, 0, true);
+    ev.setUint16(6, 0, true);
+    ev.setUint16(8, centralParts.length, true);
+    ev.setUint16(10, centralParts.length, true);
+    ev.setUint32(12, cdSize, true);
+    ev.setUint32(16, offset, true);
+    ev.setUint16(20, 0, true);
+
+    const totalLen = offset + cdSize + eocd.length;
+    const out = new Uint8Array(totalLen);
+    let pos = 0;
+    for (const p of localParts) { out.set(p, pos); pos += p.length; }
+    for (const p of centralParts) { out.set(p, pos); pos += p.length; }
+    out.set(eocd, pos);
+    return out;
+  }
+
+  /* Kayıtlı Dağıtım Metrik Değerlendirme & Yan Yana Karşılaştırma */
+  function evaluateSavedPlan(S, plan) {
+    const D = +S.school.D || 5, P = +S.school.P || 7;
+    const simCards = (S.cards || []).map(c => (
+      plan && plan.cardPatterns && plan.cardPatterns[c.id]
+        ? Object.assign({}, c, { pattern: plan.cardPatterns[c.id] })
+        : c
+    ));
+    const simState = Object.assign({}, S, {
+      cards: simCards,
+      place: (plan && plan.place) || {}
+    });
+    const o = EP.occ(simState);
+    const total = o.m.blocks.length;
+    const unplaced = o.un.length;
+    const placed = Math.max(0, total - unplaced);
+    const locked = Object.values(simState.place).filter(x => x && x.lock).length;
+
+    let teacherGaps = 0;
+    let teacherFreeDays = 0;
+    let activeTeachers = 0;
+    for (const t of S.teachers || []) {
+      const G = o.tG[t.id] || {};
+      let hasAny = false;
+      let freeD = 0;
+      for (let d = 0; d < D; d++) {
+        let first = -1, last = -1, cnt = 0;
+        for (let p = 0; p < P; p++) {
+          if (G[d + '-' + p]) {
+            if (first < 0) first = p;
+            last = p;
+            cnt++;
+          }
+        }
+        if (cnt > 0) {
+          hasAny = true;
+          teacherGaps += (last - first + 1 - cnt);
+        } else {
+          freeD++;
+        }
+      }
+      if (hasAny) {
+        activeTeachers++;
+        teacherFreeDays += freeD;
+      }
+    }
+
+    let classSpread = 0;
+    for (const c of S.classes || []) {
+      const G = o.cG[c.id] || {};
+      const dayCnts = [];
+      for (let d = 0; d < D; d++) {
+        let cnt = 0;
+        for (let p = 0; p < P; p++) if (G[d + '-' + p]) cnt++;
+        dayCnts.push(cnt);
+      }
+      if (dayCnts.some(x => x > 0)) {
+        classSpread += Math.max(...dayCnts) - Math.min(...dayCnts);
+      }
+    }
+
+    const cov = total ? (placed / total) : 1;
+    const rawScore = (cov * 100) - (teacherGaps * 0.8) - (classSpread * 0.4) + Math.min(8, teacherFreeDays * 0.25);
+    const score = Math.max(0, Math.min(100, Math.round(rawScore * 10) / 10));
+    return {
+      id: plan && plan.id ? plan.id : '',
+      name: (plan && plan.name) || 'Mevcut Program',
+      savedAt: (plan && plan.savedAt) || '',
+      placed,
+      total,
+      unplaced,
+      locked,
+      teacherGaps,
+      teacherFreeDays,
+      activeTeachers,
+      classSpread,
+      score
+    };
+  }
+
+  function compareSavedPlans(S, planA, planB) {
+    const a = evaluateSavedPlan(S, planA);
+    const b = evaluateSavedPlan(S, planB);
+    const winner = a.score > b.score ? 'A' : b.score > a.score ? 'B' : 'tie';
+    return { a, b, winner };
+  }
+
   Object.assign(EP, {
     DOC_CSS, RTABS, DUTY_STRATEGIES, AY_AD, rep, donemText, myList, dutyOf, dutyPlaces,
     staffAdminKind, isDutyExempt, dutyExemptReason, clubOptions, clubAuto,
     teacherDailyLoads, defaultYearMonth, dutyClosedSet, toggleDutyClosedDate, clearMonthClosedDates, checkMonthlyWeekDup, buildMonthlyDuty, docMonthlyDuty,
     docClass, docTeacher, docSheet, docDuty, dutyAuto, docsFor, docFile,
-    csvExport, excelExport, wordExport, pngCanvas, vQuality, vRapor
+    csvExport, excelExport, wordExport, pngCanvas, buildZipBytes, evaluateSavedPlan, compareSavedPlans, vQuality, vRapor
   });
 })(typeof window !== 'undefined' ? window : globalThis);

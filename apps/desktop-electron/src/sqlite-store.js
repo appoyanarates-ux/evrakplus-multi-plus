@@ -44,6 +44,7 @@ export class SqliteProjectStore {
         return {
           projects: parsed.projects || {},
           solutions: parsed.solutions || {},
+          savedPlans: parsed.savedPlans || {},
           auditLogs: parsed.auditLogs || [],
           syncState: parsed.syncState || {}
         };
@@ -51,7 +52,7 @@ export class SqliteProjectStore {
     } catch {
       // ignore corrupted cache and start clean
     }
-    return { projects: {}, solutions: {}, auditLogs: [], syncState: {} };
+    return { projects: {}, solutions: {}, savedPlans: {}, auditLogs: [], syncState: {} };
   }
 
   _flushJsonState() {
@@ -98,6 +99,20 @@ export class SqliteProjectStore {
         value TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS saved_plans (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        note TEXT NOT NULL DEFAULT '',
+        saved_at TEXT NOT NULL,
+        placed INTEGER NOT NULL DEFAULT 0,
+        total INTEGER NOT NULL DEFAULT 0,
+        locked INTEGER NOT NULL DEFAULT 0,
+        payload_json TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_saved_plans_proj_time ON saved_plans(project_id, saved_at DESC);
     `);
   }
 
@@ -212,6 +227,106 @@ export class SqliteProjectStore {
       }));
     }
     return (this.state.solutions[projectId] || []).slice(0, limit);
+  }
+
+  saveSavedPlan(projectId, entry) {
+    if (!entry || typeof entry !== 'object' || !entry.id) {
+      throw new Error('Geçersiz kayıtlı dağıtım nesnesi');
+    }
+    const pid = String(projectId || 'default');
+    const clean = {
+      id: String(entry.id),
+      projectId: pid,
+      name: String(entry.name || 'Kayıtlı Dağıtım'),
+      note: String(entry.note || ''),
+      savedAt: String(entry.savedAt || new Date().toISOString()),
+      placed: Number(entry.placed || 0),
+      total: Number(entry.total || 0),
+      locked: Number(entry.locked || 0),
+      place: entry.place && typeof entry.place === 'object' ? entry.place : {},
+      cardPatterns: entry.cardPatterns && typeof entry.cardPatterns === 'object' ? entry.cardPatterns : {}
+    };
+    if (this.db) {
+      this.db.prepare(`
+        INSERT INTO saved_plans (id, project_id, name, note, saved_at, placed, total, locked, payload_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          project_id = excluded.project_id,
+          name = excluded.name,
+          note = excluded.note,
+          saved_at = excluded.saved_at,
+          placed = excluded.placed,
+          total = excluded.total,
+          locked = excluded.locked,
+          payload_json = excluded.payload_json
+      `).run(
+        clean.id,
+        clean.projectId,
+        clean.name,
+        clean.note,
+        clean.savedAt,
+        clean.placed,
+        clean.total,
+        clean.locked,
+        JSON.stringify({ place: clean.place, cardPatterns: clean.cardPatterns })
+      );
+    } else {
+      const list = (this.state.savedPlans[pid] || []).filter(x => x.id !== clean.id);
+      list.unshift(clean);
+      this.state.savedPlans[pid] = list.slice(0, 100);
+      this._flushJsonState();
+    }
+    this.logAudit('SAVED_PLAN_SAVE', `projectId=${pid} planId=${clean.id}`);
+    return clean;
+  }
+
+  listSavedPlans(projectId, limit = 100) {
+    const pid = String(projectId || 'default');
+    const lim = Math.max(1, Math.min(200, Number(limit) || 100));
+    if (this.db) {
+      return this.db.prepare(`
+        SELECT id, project_id AS projectId, name, note, saved_at AS savedAt,
+               placed, total, locked, payload_json AS payloadJson
+        FROM saved_plans
+        WHERE project_id = ?
+        ORDER BY saved_at DESC
+        LIMIT ?
+      `).all(pid, lim).map(r => {
+        const p = JSON.parse(r.payloadJson || '{}');
+        return {
+          id: r.id,
+          projectId: r.projectId,
+          name: r.name,
+          note: r.note,
+          savedAt: r.savedAt,
+          placed: r.placed,
+          total: r.total,
+          locked: r.locked,
+          place: p.place || {},
+          cardPatterns: p.cardPatterns || {}
+        };
+      });
+    }
+    return (this.state.savedPlans[pid] || []).slice(0, lim).map(x => structuredClone(x));
+  }
+
+  deleteSavedPlan(planId) {
+    const id = String(planId || '');
+    if (!id) return false;
+    let deleted = false;
+    if (this.db) {
+      const info = this.db.prepare('DELETE FROM saved_plans WHERE id = ?').run(id);
+      deleted = info.changes > 0;
+    } else {
+      for (const pid of Object.keys(this.state.savedPlans || {})) {
+        const before = this.state.savedPlans[pid].length;
+        this.state.savedPlans[pid] = this.state.savedPlans[pid].filter(x => x.id !== id);
+        if (this.state.savedPlans[pid].length < before) deleted = true;
+      }
+      if (deleted) this._flushJsonState();
+    }
+    if (deleted) this.logAudit('SAVED_PLAN_DELETE', `planId=${id}`);
+    return deleted;
   }
 
   logAudit(action, detail = '') {

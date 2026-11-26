@@ -107,7 +107,18 @@
     saveT = setTimeout(() => {
       S.updatedAt = new Date().toISOString();
       S.revision = Number(S.revision || 1) + 1;
-      try { localStorage.setItem(LS, JSON.stringify(S)); } catch (_) {}
+      try {
+        const hasNativePlans = Boolean(bridge && typeof bridge.saveSavedPlan === 'function');
+        const lsState = (hasNativePlans && Array.isArray(S.savedPlans) && S.savedPlans.length > 5)
+          ? Object.assign({}, S, { savedPlans: S.savedPlans.slice(0, 5) })
+          : S;
+        localStorage.setItem(LS, JSON.stringify(lsState));
+      } catch (_) {
+        try {
+          const slim = Object.assign({}, S, { savedPlans: (S.savedPlans || []).slice(0, 3) });
+          localStorage.setItem(LS, JSON.stringify(slim));
+        } catch (__) {}
+      }
       if (bridge && typeof bridge.saveProject === 'function') {
         try { bridge.saveProject(EP.stateToV3Project(S)).catch(() => {}); } catch (_) {}
       }
@@ -809,7 +820,7 @@
     const tAdmin = t ? EP.staffAdminKind(S, t) : '';
     const tExempt = t ? EP.isDutyExempt(S, t) : false;
     return H('Öğretmenler ve müsaitlik', 'Branşı, unvan/nöbet muafiyetini, sosyal kulübü, müsaitlik matrisini ve öğretmene atanan dersleri (ekleme, düzenleme, aktarma, takas) buradan yönetin.',
-      `<button class="btn pri" data-act="addT">Öğretmen ekle</button><button class="btn" data-act="bulkT">Branşa göre eksikleri ekle</button>`) +
+      `<button class="btn pri" data-act="addT">Öğretmen ekle</button><button class="btn" data-act="importTeachers">Excel / e-Okul'dan Aktar</button><button class="btn" data-act="bulkT">Branşa göre eksikleri ekle</button>`) +
       (S.teachers.length ? `<div class="board" style="grid-template-columns:300px minmax(0,1fr)"><div class="tlist">${list}</div>${t ? `<div class="card">
         <div class="row" style="justify-content:space-between"><h2>${esc(t.name)}</h2><button class="btn sm ghost" data-act="delT" data-id="${t.id}">Öğretmeni sil</button></div>
         <div class="fields" style="margin:12px 0">
@@ -835,7 +846,7 @@
   function vSinif() {
     const op = S.ui.openCls, T = EP.typeOf(S), G = T ? T.grades : [5, 6, 7, 8];
     return H('Sınıflar ve şubeler', `Şubeleri ekleyin. Toplu eklemede ${T ? esc(T.ad) + ' çizelgesindeki' : 'şablondaki'} zorunlu dersler kendiliğinden eklenir ve öğretmenler otomatik atanır.`,
-      `<button class="btn pri" data-act="bulkCls">Toplu sınıf ekle</button><button class="btn" data-act="addCls">Tek şube ekle</button><button class="btn" data-act="rehAuto">Rehber öğretmenleri dağıt</button>`) +
+      `<button class="btn pri" data-act="bulkCls">Toplu sınıf ekle</button><button class="btn" data-act="importClasses">Excel / e-Okul'dan Aktar</button><button class="btn" data-act="addCls">Tek şube ekle</button><button class="btn" data-act="rehAuto">Rehber öğretmenleri dağıt</button>`) +
       `<div class="card" style="display:${S.ui.bulk ? 'block' : 'none'};margin-bottom:16px"><h2>Toplu sınıf ekle</h2><div class="fields" style="margin-top:12px">
         ${G.map(g => `<label class="f">${EP.gradeLabel(g)} şube sayısı<input type="number" min="0" max="20" value="${S.classes.some(c => c.grade === g) ? 0 : 1}" id="bg${g}"></label>`).join('')}
       </div><div class="row" style="margin-top:12px"><button class="btn pri" data-act="bulkGo">Ekle ve zorunlu dersleri oluştur</button><button class="btn ghost" data-act="bulkCls">Vazgeç</button></div></div>` +
@@ -1622,6 +1633,7 @@
         <label class="f" style="flex:1;min-width:220px">Dağıtım adı<input id="spName_${compact ? 'd' : 'p'}" placeholder="ör. 1. Dönem Kesin Program, Alternatif A"></label>
         <label class="f" style="flex:1;min-width:180px">Not (isteğe bağlı)<input id="spNote_${compact ? 'd' : 'p'}" placeholder="ör. Sıfır boşluk, Cuma boş"></label>
         <button class="btn pri" data-act="savePlanNow" data-src="${compact ? 'd' : 'p'}">Mevcut Dağıtımı Kaydet</button>
+        ${plans.length ? `<button class="btn" data-act="comparePlans" title="Kayıtlı dağıtımları yan yana karşılaştır">Karşılaştır</button>` : ''}
       </div>
       ${plans.length ? `<div class="scroll" style="margin-top:12px"><table class="tbl"><thead><tr><th>Kayıt Adı</th><th>Tarih</th><th class="n">Yerleşen</th><th class="n">Kilitli</th><th style="text-align:right">İşlemler</th></tr></thead><tbody>
         ${plans.map(sp => `<tr>
@@ -2437,8 +2449,188 @@
       cardPatterns
     };
     S.savedPlans.unshift(entry);
-    if (S.savedPlans.length > 30) S.savedPlans = S.savedPlans.slice(0, 30);
+    const maxPlans = (bridge && typeof bridge.saveSavedPlan === 'function') ? 100 : 30;
+    if (S.savedPlans.length > maxPlans) S.savedPlans = S.savedPlans.slice(0, maxPlans);
+    if (bridge && typeof bridge.saveSavedPlan === 'function') {
+      try { bridge.saveSavedPlan(S.id || 'default', entry).catch(() => {}); } catch (_) {}
+    }
     return entry;
+  }
+
+  function openComparePlansModal() {
+    const plans = Array.isArray(S.savedPlans) ? S.savedPlans : [];
+    if (!plans.length) { toast('Karşılaştırmak için önce en az 1 dağıtım kaydedin.'); return; }
+    const curPlan = {
+      id: '__current__',
+      name: 'Mevcut Aktif Program',
+      savedAt: S.updatedAt || new Date().toISOString(),
+      place: S.place || {},
+      cardPatterns: Object.fromEntries((S.cards || []).map(c => [c.id, c.pattern]))
+    };
+    const allOpts = [curPlan, ...plans];
+    let selA = plans.length >= 2 ? plans[0].id : '__current__';
+    let selB = plans.length >= 2 ? plans[1].id : plans[0].id;
+
+    const M = $('#modalRoot');
+    const draw = () => {
+      const pA = allOpts.find(x => x.id === selA) || allOpts[0];
+      const pB = allOpts.find(x => x.id === selB) || allOpts[allOpts.length - 1];
+      const cmp = EP.compareSavedPlans(S, pA, pB);
+      const A = cmp.a, B = cmp.b;
+      const winCell = (av, bv, higherBetter) => {
+        if (av === bv) return ['', ''];
+        const aWin = higherBetter ? av > bv : av < bv;
+        return [
+          aWin ? ' style="color:var(--ok);font-weight:700"' : '',
+          !aWin ? ' style="color:var(--ok);font-weight:700"' : ''
+        ];
+      };
+      const [cP1, cP2] = winCell(A.placed, B.placed, true);
+      const [cG1, cG2] = winCell(A.teacherGaps, B.teacherGaps, false);
+      const [cF1, cF2] = winCell(A.teacherFreeDays, B.teacherFreeDays, true);
+      const [cS1, cS2] = winCell(A.classSpread, B.classSpread, false);
+      const [cQ1, cQ2] = winCell(A.score, B.score, true);
+
+      M.innerHTML = `<div class="modal"><div class="box" style="width:min(720px,100%)">
+        <h2>Kayıtlı Dağıtımları Karşılaştır</h2>
+        <p class="small muted">İki ders dağıtımını yerleşim oranı, öğretmen ara boşlukları (pencere), boş gün sayısı ve kalite puanı açısından yan yana inceleyin.</p>
+        <div class="grid2" style="gap:10px;margin:10px 0">
+          <label class="f">1. Dağıtım (A)<select id="cmpSelA">${allOpts.map(x => `<option value="${esc(x.id)}" ${x.id === pA.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
+          <label class="f">2. Dağıtım (B)<select id="cmpSelB">${allOpts.map(x => `<option value="${esc(x.id)}" ${x.id === pB.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
+        </div>
+        <div class="scroll"><table class="tbl">
+          <thead><tr><th>Ölçüt</th><th class="n">${esc(A.name)}</th><th class="n">${esc(B.name)}</th></tr></thead>
+          <tbody>
+            <tr><td><b>Yerleşen / Toplam Blok</b></td><td class="n"${cP1}>${A.placed} / ${A.total}</td><td class="n"${cP2}>${B.placed} / ${B.total}</td></tr>
+            <tr><td><b>Dağıtılamayan Blok</b></td><td class="n">${A.unplaced}</td><td class="n">${B.unplaced}</td></tr>
+            <tr><td><b>Kilitli Blok</b></td><td class="n">${A.locked}</td><td class="n">${B.locked}</td></tr>
+            <tr><td><b>Öğretmen Ara Boşluğu (Pencere · az = iyi)</b></td><td class="n"${cG1}>${A.teacherGaps} saat</td><td class="n"${cG2}>${B.teacherGaps} saat</td></tr>
+            <tr><td><b>Öğretmen Toplam Boş Günü (çok = iyi)</b></td><td class="n"${cF1}>${A.teacherFreeDays} gün</td><td class="n"${cF2}>${B.teacherFreeDays} gün</td></tr>
+            <tr><td><b>Sınıf Gün Dağılım Farkı (az = dengeli)</b></td><td class="n"${cS1}>${A.classSpread}</td><td class="n"${cS2}>${B.classSpread}</td></tr>
+            <tr><td><b>Genel Kalite Puanı</b></td><td class="n"${cQ1}><b>${A.score} / 100</b>${cmp.winner === 'A' ? ' <span class="pill ok">Önde</span>' : ''}</td><td class="n"${cQ2}><b>${B.score} / 100</b>${cmp.winner === 'B' ? ' <span class="pill ok">Önde</span>' : ''}</td></tr>
+          </tbody>
+        </table></div>
+        <div class="row" style="justify-content:flex-end;margin-top:12px">
+          ${pA.id !== '__current__' ? `<button class="btn" id="cmpApplyA">A'yı Uygula</button>` : ''}
+          ${pB.id !== '__current__' ? `<button class="btn pri" id="cmpApplyB">B'yi Uygula</button>` : ''}
+          <button class="btn ghost" id="cmpClose">Kapat</button>
+        </div>
+      </div></div>`;
+      $('#cmpSelA').addEventListener('change', e => { selA = e.target.value; draw(); });
+      $('#cmpSelB').addEventListener('change', e => { selB = e.target.value; draw(); });
+      $('#cmpClose').addEventListener('click', () => { M.innerHTML = ''; });
+      const applyById = pid => {
+        const sp = plans.find(x => x.id === pid);
+        if (!sp) return;
+        snap();
+        if (sp.cardPatterns) for (const c of S.cards || []) if (sp.cardPatterns[c.id]) c.pattern = sp.cardPatterns[c.id];
+        S.place = JSON.parse(JSON.stringify(sp.place || {}));
+        const { bad } = EP.placedCore(S);
+        bad.forEach(b => delete S.place[b]);
+        S.last = { status: bad.length ? 'partial' : 'ok', ms: 0, note: `Kayıtlı dağıtım yüklendi: ${sp.name}` };
+        M.innerHTML = '';
+        commit();
+        toast(`"${sp.name}" programa uygulandı.`);
+      };
+      $('#cmpApplyA')?.addEventListener('click', () => applyById(pA.id));
+      $('#cmpApplyB')?.addEventListener('click', () => applyById(pB.id));
+    };
+    draw();
+  }
+
+  function openBulkImportModal(mode) {
+    const isT = mode === 'teachers';
+    const M = $('#modalRoot');
+    let parsed = [];
+    const sampleCsv = isT
+      ? '\uFEFFAd Soyad;Branş;Görev;Nöbet\nAhmet Yılmaz;Matematik;Öğretmen;Evet\nAyşe Kaya;Türkçe;Öğretmen;Evet\nMehmet Demir;Fen Bilimleri;Müdür Yardımcısı;Hayır\nZeynep Ak;Rehberlik;Rehberlik;Hayır'
+      : '\uFEFFŞube;Sınıf Düzeyi;Rehber Öğretmen;Devre\n5/A;5;Ahmet Yılmaz;Tam gün\n5/B;5;Ayşe Kaya;Tam gün\n6/A;6;;Tam gün\n6/B;6;;Tam gün';
+
+    M.innerHTML = `<div class="modal"><div class="box" style="width:min(760px,100%)">
+      <h2>${isT ? "Excel / e-Okul'dan Toplu Öğretmen İçe Aktar" : "Excel / e-Okul'dan Toplu Şube İçe Aktar"}</h2>
+      <p class="small muted">${isT
+        ? 'Excel veya e-Okul listenizden satırları doğrudan kopyalayıp yapıştırın ya da .csv/.txt dosyası yükleyin. Sütun sırası: <b>Ad Soyad · Branş · Görev (isteğe bağlı) · Nöbet (Evet/Hayır)</b>'
+        : 'Excel veya e-Okul şube listenizi yapıştırın ya da .csv/.txt yükleyin. Sütun sırası: <b>Şube Adı (ör. 5/A, Hz/A) · Sınıf Düzeyi (isteğe bağlı) · Rehber Öğretmen · Devre</b>'}</p>
+      <div class="row" style="gap:8px;margin:8px 0">
+        <label class="btn sm" style="cursor:pointer">Dosya Seç (.csv / .txt)<input type="file" id="biFile" accept=".csv,.tsv,.txt,text/csv,text/plain" style="display:none"></label>
+        <button class="btn sm ghost" id="biTpl">Örnek Excel/CSV Şablonu İndir</button>
+        ${!isT ? `<label class="row small" style="margin-left:auto;gap:6px"><input type="checkbox" id="biApplyTpl" checked> Okul türü zorunlu derslerini ekle ve öğretmen ata</label>` : ''}
+      </div>
+      <textarea id="biText" rows="6" style="width:100%;font-family:var(--mono);font-size:12px" placeholder="${isT ? 'Ahmet Yılmaz\tMatematik\nAyşe Kaya\tTürkçe' : '5/A\t5\n5/B\t5\n6/A\t6'}"></textarea>
+      <div id="biPrev" style="margin-top:10px;max-height:240px;overflow:auto"></div>
+      <div class="row" style="justify-content:space-between;margin-top:12px">
+        <span class="small muted" id="biCount">Veri yapıştırın veya dosya seçin.</span>
+        <div class="row">
+          <button class="btn" id="biCancel">Vazgeç</button>
+          <button class="btn pri" id="biGo" disabled>İçe Aktar</button>
+        </div>
+      </div>
+    </div></div>`;
+
+    const refresh = () => {
+      const txt = ($('#biText') || {}).value || '';
+      parsed = isT ? EP.parseBulkTeachers(txt, S) : EP.parseBulkClasses(txt, S);
+      const fresh = parsed.filter(r => !r.duplicate);
+      const dups = parsed.length - fresh.length;
+      const btn = $('#biGo');
+      if (btn) {
+        btn.disabled = !fresh.length;
+        btn.textContent = fresh.length ? `${fresh.length} ${isT ? 'Öğretmeni' : 'Şubeyi'} Ekle` : 'İçe Aktar';
+      }
+      $('#biCount').textContent = parsed.length
+        ? `${fresh.length} yeni kayıt eklenecek${dups ? ` · ${dups} mükerrer kayıt atlanacak` : ''}.`
+        : 'Veri yapıştırın veya dosya seçin.';
+      if (!parsed.length) { $('#biPrev').innerHTML = ''; return; }
+      $('#biPrev').innerHTML = isT
+        ? `<table class="tbl"><thead><tr><th>Ad Soyad</th><th>Branş</th><th>Görev</th><th>Nöbet</th><th>Durum</th></tr></thead><tbody>${parsed.map(r => `<tr style="${r.duplicate ? 'opacity:.55' : ''}"><td><b>${esc(r.name)}</b></td><td>${esc(r.branch)}</td><td class="small">${esc((EP.STAFF_ROLES.find(x => x[0] === r.role) || [])[1] || r.role)}</td><td class="small">${r.dutyExempt ? 'Muaf' : 'Tutar'}</td><td>${r.duplicate ? '<span class="tag" style="background:var(--warnBg);color:var(--warn)">Zaten var</span>' : '<span class="tag" style="background:var(--okBg);color:var(--ok)">Yeni</span>'}</td></tr>`).join('')}</tbody></table>`
+        : `<table class="tbl"><thead><tr><th>Şube</th><th class="n">Düzey</th><th>Rehber Öğretmen</th><th>Devre</th><th>Durum</th></tr></thead><tbody>${parsed.map(r => `<tr style="${r.duplicate ? 'opacity:.55' : ''}"><td><b>${esc(r.name)}</b></td><td class="n">${esc(EP.gradeLabel(r.grade))}</td><td class="small">${esc(r.rehberName || '—')}</td><td class="small">${r.shift === 'morning' ? 'Sabahçı' : r.shift === 'afternoon' ? 'Öğlenci' : 'Tam gün'}</td><td>${r.duplicate ? '<span class="tag" style="background:var(--warnBg);color:var(--warn)">Zaten var</span>' : '<span class="tag" style="background:var(--okBg);color:var(--ok)">Yeni</span>'}</td></tr>`).join('')}</tbody></table>`;
+    };
+
+    $('#biText').addEventListener('input', refresh);
+    $('#biFile').addEventListener('change', async e => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      $('#biText').value = await f.text();
+      refresh();
+    });
+    $('#biTpl').addEventListener('click', () => {
+      downloadBlob(isT ? 'ornek-ogretmen-listesi.csv' : 'ornek-sube-listesi.csv', sampleCsv, 'text/csv;charset=utf-8');
+    });
+    $('#biCancel').addEventListener('click', () => { M.innerHTML = ''; });
+    $('#biGo').addEventListener('click', () => {
+      const fresh = parsed.filter(r => !r.duplicate);
+      if (!fresh.length) return;
+      snap();
+      if (isT) {
+        let lastId = '';
+        for (const r of fresh) {
+          const nt = { id: uid(), name: r.name, short: '', branch: r.branch, role: r.role, dutyExempt: r.dutyExempt, dmax: 7, cmax: 4, wmax: 30, av: {}, extra: [], dutyD: '', dutyP: '', kulup: '' };
+          S.teachers.push(nt);
+          lastId = nt.id;
+        }
+        if (lastId) S.ui.tsel = lastId;
+        M.innerHTML = '';
+        commit();
+        toast(`${fresh.length} öğretmen başarıyla içe aktarıldı.`);
+      } else {
+        const applyTpl = Boolean($('#biApplyTpl') && $('#biApplyTpl').checked);
+        const made = [];
+        for (const r of fresh) {
+          const nc = { id: uid(), name: r.name, grade: r.grade, shift: r.shift, studentCount: 28, homeRoomId: '', closed: [], rehber: r.rehberId || '' };
+          S.classes.push(nc);
+          EP.closeExtra(S, nc);
+          if (applyTpl) made.push(...EP.applyTemplate(S, nc, true));
+          if (r.rehberId) EP.setRehber(S, nc, r.rehberId);
+        }
+        if (applyTpl && made.length) {
+          if (S.ui.amode !== 'off') EP.assignCards(S, made);
+          EP.rehberAuto(S);
+        }
+        M.innerHTML = '';
+        commit();
+        toast(`${fresh.length} şube başarıyla içe aktarıldı${applyTpl && made.length ? ` (${made.length} zorunlu ders oluşturuldu)` : ''}.`);
+      }
+    });
   }
 
   function checkRehSlot(d, p, clsIds) {
@@ -3333,12 +3525,18 @@
         const safeNm = (sp.name || 'dagitim').replace(/[\\/:*?"<>|]+/g, '').trim() || 'dagitim';
         downloadBlob(safeNm + '.json', JSON.stringify(EP.stateToV3Project(clone), null, 2), 'application/json');
       } break;
+      case 'importTeachers': openBulkImportModal('teachers'); break;
+      case 'importClasses': openBulkImportModal('classes'); break;
+      case 'comparePlans': openComparePlansModal(); break;
       case 'delSavedPlan': {
         const sp = (S.savedPlans || []).find(x => x.id === id);
         if (!sp) break;
         if (!await ask(`"${sp.name}" kayıtlı dağıtımı silinecek.`, 'Sil')) break;
         snap();
         S.savedPlans = (S.savedPlans || []).filter(x => x.id !== id);
+        if (bridge && typeof bridge.deleteSavedPlan === 'function') {
+          try { bridge.deleteSavedPlan(id).catch(() => {}); } catch (_) {}
+        }
         commit();
         toast('Kayıtlı dağıtım silindi.');
       } break;
@@ -3367,22 +3565,46 @@
         if (!list.length) { toast(kind === 't' ? 'Öğretmen bulunamadı.' : 'Sınıf bulunamadı.'); break; }
         const mode = await resolveExportMode(kind === 't' ? `Tüm öğretmenler (${list.length}) WhatsApp görselleri` : `Tüm sınıflar (${list.length}) WhatsApp görselleri`);
         if (!mode) break;
-        toast(`${list.length} adet WhatsApp PNG görseli indiriliyor…`);
-        let cnt = 0;
+        const safeSchool = String(S.school.name || 'DersMatrix').replace(/[\\/:*?"<>|]+/g, '-').trim() || 'DersMatrix';
+        const subName = `${safeSchool}-${kind === 't' ? 'Ogretmenler' : 'Siniflar'}-WhatsApp`;
+        toast(`${list.length} adet WhatsApp PNG görseli hazırlanıyor…`);
+        const prepared = [];
+        const usedNames = new Set();
         for (const ent of list) {
           const cv = EP.pngCanvas(S, kind, ent.id, { watermark: mode !== 'clean' });
           if (!cv) continue;
-          const link = document.createElement('a');
-          const safe = String(ent.name || 'program').replace(/[\\/:*?"<>|]+/g, '-').trim();
-          link.href = cv.toDataURL('image/png');
-          link.download = `${kind === 't' ? 'Ogretmen' : 'Sinif'}-${safe}.png`;
-          document.body.appendChild(link);
-          link.click();
-          link.remove();
-          cnt++;
-          await new Promise(r => setTimeout(r, 120));
+          const baseSafe = String(ent.name || 'program').replace(/[\\/:*?"<>|]+/g, '-').trim() || 'program';
+          let fname = `${kind === 't' ? 'Ogretmen' : 'Sinif'}-${baseSafe}.png`;
+          let idx = 2;
+          while (usedNames.has(fname.toLowerCase())) {
+            fname = `${kind === 't' ? 'Ogretmen' : 'Sinif'}-${baseSafe}-${idx++}.png`;
+          }
+          usedNames.add(fname.toLowerCase());
+          prepared.push({ name: fname, dataUrl: cv.toDataURL('image/png') });
         }
-        toast(`${cnt} adet ${kind === 't' ? 'öğretmen' : 'sınıf'} WhatsApp görseli (.png) indirildi.`);
+        if (!prepared.length) { toast('Görsel üretilemedi.'); break; }
+
+        if (bridge && typeof bridge.savePngBatch === 'function') {
+          try {
+            const res = await bridge.savePngBatch({ folderName: subName, files: prepared });
+            if (res && res.ok) toast(`${res.count} adet WhatsApp görseli klasöre kaydedildi: ${res.dir}`);
+            else if (res && !res.canceled) toast('Görseller klasöre kaydedilemedi.');
+          } catch (err) {
+            toast('Klasöre kaydetme hatası: ' + (err && err.message ? err.message : String(err)));
+          }
+          break;
+        }
+
+        const zipEntries = prepared.map(item => {
+          const b64 = item.dataUrl.split(',')[1] || '';
+          const bin = atob(b64);
+          const bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          return { name: item.name, data: bytes };
+        });
+        const zipBytes = EP.buildZipBytes(zipEntries);
+        downloadBlob(`${subName}.zip`, zipBytes, 'application/zip');
+        toast(`${prepared.length} adet ${kind === 't' ? 'öğretmen' : 'sınıf'} WhatsApp görseli tek ZIP arşivi olarak indirildi.`);
       } break;
       case 'exPng2': {
         const mode = await resolveExportMode('WhatsApp PNG görseli oluşturma');
@@ -3884,6 +4106,23 @@
       } catch (_) {}
     }
     S = EP.migrateState(saved || EP.demo(false));
+    if (bridge && typeof bridge.listSavedPlans === 'function') {
+      try {
+        const pid = S.id || 'default';
+        const dbPlans = await bridge.listSavedPlans(pid);
+        const byId = new Map();
+        for (const p of (Array.isArray(dbPlans) ? dbPlans : [])) byId.set(p.id, p);
+        for (const lp of (Array.isArray(S.savedPlans) ? S.savedPlans : [])) {
+          if (lp && lp.id && !byId.has(lp.id)) {
+            byId.set(lp.id, lp);
+            if (typeof bridge.saveSavedPlan === 'function') {
+              bridge.saveSavedPlan(pid, lp).catch(() => {});
+            }
+          }
+        }
+        S.savedPlans = [...byId.values()].sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')));
+      } catch (_) {}
+    }
     syncSubj();
     const h0 = location.hash.slice(1);
     step = EP.MENUS.some(m => m[0] === h0) ? h0 : 'auto_schedule';
