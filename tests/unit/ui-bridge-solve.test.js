@@ -272,3 +272,118 @@ test('TTKB 2025/2026 school type groups, mandatory/elective math audit & Hazırl
   assert.equal(EP.gradeLabel(0), 'Hazırlık');
   assert.equal(EP.gradeRange([0, 9, 10, 11, 12]), 'Hazırlık–12. sınıf');
 });
+
+test('v2.4.0: haftalık nöbet en yoğun gün + yığılmasız eşit dağıtım (7 öğretmen / 5 gün)', () => {
+  const EP = loadUiNamespace();
+  const S = EP.blank();
+  S.school.D = 5;
+  S.school.P = 7;
+  S.duty.strategy = 'max_lessons';
+  S.duty.avoidZeroDay = true;
+  S.classes = [
+    { id: 'c1', name: '5/A', grade: 5, closed: [] },
+    { id: 'c2', name: '6/A', grade: 6, closed: [] },
+    { id: 'c3', name: '7/A', grade: 7, closed: [] },
+    { id: 'c4', name: '8/A', grade: 8, closed: [] },
+    { id: 'c5', name: '5/B', grade: 5, closed: [] },
+    { id: 'c6', name: '6/B', grade: 6, closed: [] },
+    { id: 'c7', name: '7/B', grade: 7, closed: [] }
+  ];
+  // 7 öğretmen: hepsinin en yoğun günleri Pzt(0) ve Sal(1) olmasına rağmen 5 güne eşit [2,2,1,1,1] yayılmalı
+  const dailyPatterns = [
+    [6, 5, 3, 2, 1], // t0: en yoğun Pzt(6), Sal(5)
+    [6, 4, 2, 2, 1], // t1: en yoğun Pzt(6)
+    [5, 6, 3, 2, 1], // t2: en yoğun Sal(6)
+    [4, 5, 4, 2, 1], // t3: en yoğun Sal(5), Çar(4)
+    [3, 4, 5, 3, 2], // t4: en yoğun Çar(5)
+    [3, 4, 3, 5, 2], // t5: en yoğun Per(5)
+    [3, 4, 2, 3, 5]  // t6: en yoğun Cum(5)
+  ];
+  S.teachers = dailyPatterns.map((_, i) => ({
+    id: `t${i}`,
+    name: `Öğretmen ${i + 1}`,
+    branch: 'Matematik',
+    role: 'ogretmen',
+    dutyExempt: false,
+    dutyD: '',
+    dutyP: '',
+    av: {}
+  }));
+  S.cards = [];
+  S.place = {};
+  let cardSeq = 0;
+  for (let ti = 0; ti < dailyPatterns.length; ti++) {
+    for (let d = 0; d < 5; d++) {
+      const cnt = dailyPatterns[ti][d];
+      for (let p = 0; p < cnt; p++) {
+        const cid = `cd_${cardSeq++}`;
+        S.cards.push({ id: cid, classId: `c${ti + 1}`, subj: 'MAT', hours: 1, pattern: '1', teacherId: `t${ti}`, kind: 'zorunlu' });
+        S.place[`${cid}:0`] = { d, p, lock: false };
+      }
+    }
+  }
+
+  const assigned = EP.dutyAuto(S);
+  assert.equal(assigned, 7, 'Tüm 7 öğretmen nöbete atanmalı');
+
+  const counts = [0, 0, 0, 0, 0];
+  for (const t of S.teachers) {
+    const d = Number(t.dutyD);
+    assert.ok(d >= 0 && d < 5, `${t.name} geçerli güne atanmalı`);
+    counts[d]++;
+  }
+  const sorted = [...counts].sort((a, b) => a - b);
+  assert.deepEqual(sorted, [1, 1, 1, 2, 2], `7 öğretmen 5 güne yığılmasız [1,1,1,2,2] dağılmalı, gelen: [${counts.join(',')}]`);
+  // En yoğun günleri Pzt(0) ve Sal(1) olan öğretmenler ağırlıklı olduğu için 2'şer kişilik günler Pzt ve Sal olmalı
+  assert.equal(counts[0], 2, 'En yoğun gün Pzt 2 nöbetçi almalı');
+  assert.equal(counts[1], 2, 'İkinci en yoğun gün Sal 2 nöbetçi almalı');
+  assert.equal(Number(S.teachers[4].dutyD), 2, 'Çarşamba en yoğun olan t4 Çarşamba atanmalı');
+  assert.equal(Number(S.teachers[5].dutyD), 3, 'Perşembe en yoğun olan t5 Perşembe atanmalı');
+  assert.equal(Number(S.teachers[6].dutyD), 4, 'Cuma en yoğun olan t6 Cuma atanmalı');
+});
+
+test('v2.4.0: özel zil saatleri, müdür yardımcısı bilgisi, WhatsApp görselleri ve Excel kaldırma', () => {
+  const EP = loadUiNamespace();
+  const S = EP.demo(false);
+  S.school.name = 'Cumhuriyet Ortaokulu';
+  S.school.mudur = 'Mehmet Demir';
+  S.school.mudurYardimcisi = 'Ayşe Kaya';
+  S.school.customTimes = [{ start: '08:15', end: '08:55' }, { start: '09:05', end: '09:45' }];
+
+  const tm = EP.times(S);
+  assert.equal(tm[0], '08:15–08:55');
+  assert.equal(tm[1], '09:05–09:45');
+  assert.ok(tm[2].includes('–'), 'Üçüncü ders otomatik hesaplanmalı');
+
+  const o = EP.occ(S);
+  const classDoc = EP.docClass(S, S.classes[0], o);
+  assert.ok(classDoc.includes('Cumhuriyet Ortaokulu'));
+  assert.ok(classDoc.includes('Mehmet Demir'));
+  assert.ok(classDoc.includes('Ayşe Kaya'));
+  assert.ok(classDoc.includes('08:15<br>08:55'));
+
+  const teacherDoc = EP.docTeacher(S, S.teachers[0], o);
+  assert.ok(teacherDoc.includes('Mehmet Demir'));
+  assert.ok(teacherDoc.includes('Ayşe Kaya'));
+  assert.ok(teacherDoc.includes('08:15<br>08:55'));
+
+  const dutyDoc = EP.docDuty(S);
+  assert.ok(dutyDoc.includes('Mehmet Demir'));
+  assert.ok(dutyDoc.includes('Ayşe Kaya'));
+
+  // Raporlar ekranı: Excel yok, ayrı Sınıf ve Öğretmen WhatsApp PNG düğmeleri var
+  const raporHtml = EP.vRapor(S, (t) => `<h1>${t}</h1>`, true);
+  assert.equal(raporHtml.includes('data-act="exExcel"'), false, 'Excel butonu kaldırılmış olmalı');
+  assert.ok(raporHtml.includes('data-act="waSingle" data-kind="c"'), 'Sınıf tekli WhatsApp PNG butonu olmalı');
+  assert.ok(raporHtml.includes('data-act="waBatch" data-kind="c"'), 'Sınıf toplu WhatsApp PNG butonu olmalı');
+  assert.ok(raporHtml.includes('data-act="waSingle" data-kind="t"'), 'Öğretmen tekli WhatsApp PNG butonu olmalı');
+  assert.ok(raporHtml.includes('data-act="waBatch" data-kind="t"'), 'Öğretmen toplu WhatsApp PNG butonu olmalı');
+
+  // migrateState savedPlans, mudurYardimcisi ve customTimes alanlarını korumalı
+  S.savedPlans = [{ id: 'sp1', name: 'Dönem Başı', placed: 10, total: 10, place: { 'a:0': { d: 0, p: 0, lock: false } } }];
+  const migrated = EP.migrateState(JSON.parse(JSON.stringify(S)));
+  assert.equal(migrated.school.mudurYardimcisi, 'Ayşe Kaya');
+  assert.equal(migrated.school.customTimes[0].start, '08:15');
+  assert.equal(migrated.savedPlans.length, 1);
+  assert.equal(migrated.savedPlans[0].name, 'Dönem Başı');
+});

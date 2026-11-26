@@ -1,5 +1,22 @@
 # DersMatrix Ultimate (by EvrakPlus) — Değişiklik Geçmişi (CHANGELOG)
 
+## [2.4.0] - 2026-11-26
+
+### Yenilikler ve Düzeltmeler
+- **Raporlar ve Çıktılar — Yazdır Düzeltmesi & Ayrı WhatsApp Görselleri (.png)**:
+  - Masaüstü uygulamasında **Yazdır** düğmesinin Windows yazıcı penceresini açmama sorunu giderildi (`printHtmlDirect` artık görünür ve odaklanmış ana pencereye bağlı baskı penceresiyle sistem yazıcı diyalogunu doğrudan tetikler).
+  - Kullanılmayan **Excel (.xls)** dışa aktarma düğmeleri kaldırıldı.
+  - **Sınıflar** ve **Öğretmenler** için ayrı ayrı **WhatsApp Görseli (.png)** kartı eklendi: tek sınıf / tek öğretmen indirme veya tüm sınıflar / tüm öğretmenler toplu PNG indirme.
+- **Kayıtlı Ders Dağıtımları (Anlık Görüntü Kaydet & Tekrar Kullan)**:
+  - Hem **Dağıtım ve Program** hem de **Yedekleme ve Senkronizasyon** sayfalarına yapılan ders dağıtımını adlandırarak kaydetme, daha sonra tek tıkla geri yükleme (`Uygula`), ayrı JSON olarak indirme ve silme özelliği eklendi.
+- **Haftalık Ders Programları — Çift Tıkla Gün ve Saat Kapatma / Açma**:
+  - Program şablonlarında herhangi bir **gün başlığına** (`Pazartesi`..`Cumartesi`) çift tıklayarak tüm günü kapatıp açma; boş veya kapalı bir hücreye çift tıklayarak o tek ders saatini kapatıp açma; dolu derse çift tıklayarak kilitleme/kilit açma özelliği eklendi.
+- **Okul Ayarları — İdare Bilgileri & Özelleştirilebilir Zil / Ders Saatleri**:
+  - `Okul Ayarları` sayfasına öne çıkarılmış **Okul Adı**, **Okul Müdürü**, **Müdür Yardımcısı** alanları ile her ders saati için ayrı ayrı düzenlenebilir **Okul Zil ve Ders Saatleri** tablosu eklendi.
+  - Girilen okul adı, müdür, müdür yardımcısı ve özel zil saatleri tüm program görünümleri, PDF, Yazdır, Word, Nöbet Çizelgesi ve WhatsApp PNG görsellerinde otomatik kullanılır.
+- **Okul Nöbeti — En Yoğun Gün + Yığılmasız Eşit Haftalık Dağıtım**:
+  - Haftalık otomatik nöbet algoritması min-maliyetli maksimum akış (SPFA) ile yenilendi: öğretmenleri en çok derslerinin olduğu günlere atarken aynı zamanda haftanın açık günlerine **yığılma olmadan eşit sayıda** dağıtır (ör. 7 öğretmen / 5 gün → `[2, 2, 1, 1, 1]`).
+
 ## [2.3.0] - 2026-11-25
 
 ### Yenilikler ve Düzeltmeler

@@ -42,9 +42,24 @@
 
   const upTR = s => String(s || '').toLocaleUpperCase('tr');
   const normTR = s => String(s || '').trim().toLocaleLowerCase('tr');
-  const rep = S => Object.assign({ mudur: '', gecerli: '', sayi: '', kurum: '', myId: '', paper: 'A4' }, S.report || {}, { mudur: S.school.mudur || (S.report || {}).mudur || '' });
+  const rep = S => Object.assign(
+    { mudur: '', gecerli: '', sayi: '', kurum: '', myId: '', paper: 'A4' },
+    S.report || {},
+    {
+      mudur: S.school.mudur || (S.report || {}).mudur || '',
+      mudurYardimcisi: S.school.mudurYardimcisi || ''
+    }
+  );
   const donemText = S => S.school.year + (S.school.donem && S.school.donem !== 'Yıllık' ? ' ' + S.school.donem : '');
   const myList = S => S.school.myard || [];
+  const defaultVicePrincipalName = S => {
+    const r = rep(S);
+    const chosen = myList(S).find(x => x.id === r.myId);
+    if (chosen && chosen.name) return chosen.name;
+    if (S.school && S.school.mudurYardimcisi && S.school.mudurYardimcisi.trim()) return S.school.mudurYardimcisi.trim();
+    const firstListed = myList(S).find(x => x && x.name && x.name.trim());
+    return firstListed ? firstListed.name.trim() : '';
+  };
   const fmtD = iso => { if (!iso) return '…/…/……'; const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; };
   const wday = iso => { if (!iso) return ''; const d = new Date(iso + 'T12:00:00'); return ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'][d.getDay()]; };
   const kurumAdi = S => { const r = rep(S); return r.kurum || S.school.name; };
@@ -59,6 +74,7 @@
     if (t.role === 'rehber') return 'rehber';
     const tn = normTR(t.name);
     if (tn && S.school.mudur && normTR(S.school.mudur) === tn) return 'mudur';
+    if (tn && S.school.mudurYardimcisi && normTR(S.school.mudurYardimcisi) === tn) return 'mudur_yardimcisi';
     if (tn && myList(S).some(m => m.name && normTR(m.name) === tn)) return 'mudur_yardimcisi';
     return '';
   }
@@ -111,8 +127,8 @@
   }
 
   function sigL(S) {
-    const r = rep(S), m = myList(S).find(x => x.id === r.myId);
-    return m && m.name ? `<div class="lf" style="text-align:center">${EP.esc(m.name)}<br>Müdür Yardımcısı</div>` : '';
+    const nm = defaultVicePrincipalName(S);
+    return nm ? `<div class="lf" style="text-align:center">${EP.esc(nm)}<br>Müdür Yardımcısı</div>` : '';
   }
   function sigR(S) {
     const r = rep(S);
@@ -169,7 +185,7 @@
       <table class="g"><colgroup><col style="width:96px"></colgroup><thead><tr><th></th>${timeHead(S, P)}</tr></thead><tbody>${EP.GUN.slice(0, D).map((g, d) => `<tr><td class="day">${g}</td>${rowCells(G, d, P, fT)}</tr>`).join('')}</tbody></table>
       <div class="lt">Ders Listesi:</div><table class="l"><thead><tr><th style="width:26px">S</th><th style="width:62px">Ders</th><th>Ders Adı</th><th>Sınıflar</th><th style="width:70px">Yerleşim</th><th style="width:36px">Saat</th></tr></thead><tbody>${cards.map((x, i) => `<tr><td class="c">${i + 1}</td><td>${EP.esc(EP.SS(S, x.subj))}</td><td class="c">${EP.esc(EP.SN(S, x.subj))}</td><td class="c">${EP.esc(EP.cName(S, x.classId))}</td><td class="c">${EP.esc(x.pattern)}</td><td class="c">${x.hours}</td></tr>`).join('')}</tbody></table>
       <p style="margin-top:10px">Yukarıdaki dersler ${fmtD(r.gecerli)} tarihinden itibaren uygulanacaktır. Bilgilerinizi rica ederim.</p>
-      <div class="sig"><div class="lf">${fmtD(r.gecerli)}<br>Aslını Aldım<br>${EP.esc(upTR(t.name))}</div>${sigR(S)}</div></section>`;
+      <div class="sig"><div class="lf">${fmtD(r.gecerli)}<br>Aslını Aldım<br>${EP.esc(upTR(t.name))}</div>${sigL(S)}${sigR(S)}</div></section>`;
   }
 
   function docSheet(S, kind, o) {
@@ -181,7 +197,7 @@
       const G = (kind === 'c' ? o.cG : o.tG)[e.id] || {};
       return `<tr><td class="nm">${EP.esc(kind === 'c' ? e.name : upTR(e.name))}</td>${EP.GUN.slice(0, D).map((g, d) => rowCells(G, d, P, kind === 'c' ? fC : fT, true)).join('')}</tr>`;
     }).join('');
-    return `<section class="doc landscape"><div class="ttl" style="font-size:15px">${EP.esc(kurumAdi(S))} - ${kind === 'c' ? 'Sınıflar' : 'Öğretmenler'} Ders Programı · ${EP.esc(donemText(S))}</div><table class="g">${head}<tbody>${body}</tbody></table></section>`;
+    return `<section class="doc landscape"><div class="ttl" style="font-size:15px">${EP.esc(kurumAdi(S))} - ${kind === 'c' ? 'Sınıflar' : 'Öğretmenler'} Ders Programı · ${EP.esc(donemText(S))}</div><table class="g">${head}<tbody>${body}</tbody></table><div class="sig" style="margin-top:10px">${sigL(S)}${sigR(S)}</div></section>`;
   }
 
   function docDuty(S) {
@@ -198,8 +214,8 @@
   }
 
   const DUTY_STRATEGIES = [
-    ['min_lessons', 'En az dersinin olduğu güne (boş gün hariç)'],
-    ['max_lessons', 'En çok dersinin olduğu güne'],
+    ['max_lessons', 'En yoğun (en çok dersli) gününe — eşit ve yığılmasız'],
+    ['min_lessons', 'En az dersli gününe — eşit ve yığılmasız (boş gün hariç)'],
     ['balanced', 'Tüm gün ve nöbet yerlerine dengeli dağıt']
   ];
   const AY_AD = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
@@ -214,10 +230,106 @@
     return out;
   }
 
+  /* Min-Cost Max-Flow ile yığılmasız, katmanlı (eşit kapasiteli) ve ders yoğunluğuna göre optimal gün eşleştirme */
+  function assignBalancedDutyDays(eligible, loadsByT, D, P, strategy, avoidZeroDay) {
+    const M = eligible.length;
+    if (!M || D <= 0) return [];
+    const SRC = 0, T_OFF = 1, D_OFF = 1 + M, SNK = 1 + M + D, V = SNK + 1;
+    const adj = Array.from({ length: V }, () => []);
+    const addEdge = (u, v, cap, cost) => {
+      const a = { to: v, rev: adj[v].length, cap, cost };
+      const b = { to: u, rev: adj[u].length, cap: 0, cost: -cost };
+      adj[u].push(a);
+      adj[v].push(b);
+    };
+
+    for (let i = 0; i < M; i++) {
+      addEdge(SRC, T_OFF + i, 1, 0);
+      const t = eligible[i];
+      const a = loadsByT[t.id] || Array(D).fill(0);
+      const open = Array.from({ length: D }, (_, d) => Array.from({ length: P }, (_, p) => (t.av || {})[d + '-' + p] !== 1).some(Boolean));
+      const hasTaught = a.some(v => v > 0);
+      const hasOpen = open.some(Boolean);
+
+      for (let d = 0; d < D; d++) {
+        let penalty = 0;
+        if (hasOpen && !open[d]) penalty += 1000000;
+        else if (avoidZeroDay && hasTaught && a[d] === 0) penalty += 500000;
+
+        let sc = 0;
+        if (strategy === 'max_lessons') sc = a[d] * 100;
+        else if (strategy === 'min_lessons') sc = a[d] > 0 ? (30 - Math.min(29, a[d])) * 100 : 0;
+        else sc = (a[d] > 0 ? 500 : 0) + a[d] * 10;
+
+        addEdge(T_OFF + i, D_OFF + d, 1, penalty - sc);
+      }
+    }
+
+    // Her gün için katmanlı (layer) kapasite kenarları:
+    // Katman 0 (her güne 1. kişi): 0 ceza; Katman 1 (2. kişi): +100.000; Katman 2 (3. kişi): +200.000 ...
+    // Böylece örn. 7 öğretmen 5 güne mutlaka [2,2,1,1,1] şeklinde yığılmasız ve en yoğun günlerine dağıtılır.
+    const layers = M;
+    for (let d = 0; d < D; d++) {
+      for (let k = 0; k < layers; k++) {
+        addEdge(D_OFF + d, SNK, 1, k * 100000);
+      }
+    }
+
+    const INF = 1e15;
+    const dist = new Float64Array(V);
+    const prevV = new Int32Array(V);
+    const prevE = new Int32Array(V);
+    const inQ = new Uint8Array(V);
+
+    for (let flow = 0; flow < M; flow++) {
+      dist.fill(INF);
+      prevV.fill(-1);
+      prevE.fill(-1);
+      inQ.fill(0);
+      dist[SRC] = 0;
+      const q = [SRC];
+      inQ[SRC] = 1;
+      for (let head = 0; head < q.length; head++) {
+        const u = q[head];
+        inQ[u] = 0;
+        const edges = adj[u];
+        for (let ei = 0; ei < edges.length; ei++) {
+          const e = edges[ei];
+          if (e.cap > 0 && dist[u] + e.cost < dist[e.to]) {
+            dist[e.to] = dist[u] + e.cost;
+            prevV[e.to] = u;
+            prevE[e.to] = ei;
+            if (!inQ[e.to]) { q.push(e.to); inQ[e.to] = 1; }
+          }
+        }
+      }
+      if (prevV[SNK] === -1) break;
+      let cur = SNK;
+      while (cur !== SRC) {
+        const u = prevV[cur], ei = prevE[cur];
+        const e = adj[u][ei];
+        e.cap -= 1;
+        adj[e.to][e.rev].cap += 1;
+        cur = u;
+      }
+    }
+
+    const assignedDay = Array(M).fill(-1);
+    for (let i = 0; i < M; i++) {
+      for (const e of adj[T_OFF + i]) {
+        if (e.to >= D_OFF && e.to < SNK && e.cap === 0) {
+          assignedDay[i] = e.to - D_OFF;
+          break;
+        }
+      }
+    }
+    return assignedDay;
+  }
+
   function dutyAuto(S, opts) {
-    const D = +S.school.D || 5, pl = dutyPlaces(S), o = EP.occ(S);
-    const dCfg = S.duty = Object.assign({ places: pl, admin: {}, strategy: 'min_lessons', avoidZeroDay: true, month: '', monthlyMode: 'rotate', monthly: {} }, S.duty || {});
-    const strategy = (opts && opts.strategy) || dCfg.strategy || 'min_lessons';
+    const D = +S.school.D || 5, P = +S.school.P || 7, pl = dutyPlaces(S), o = EP.occ(S);
+    const dCfg = S.duty = Object.assign({ places: pl, admin: {}, strategy: 'max_lessons', avoidZeroDay: true, reassignClosedDay: true, closedDates: [], month: '', monthlyMode: 'rotate', monthly: {} }, S.duty || {});
+    const strategy = (opts && opts.strategy) || dCfg.strategy || 'max_lessons';
     const avoidZeroDay = (opts && opts.avoidZeroDay != null) ? Boolean(opts.avoidZeroDay) : (dCfg.avoidZeroDay !== false);
     const loadsByT = teacherDailyLoads(S, o);
     const cnt = Array.from({ length: D }, () => Array(pl.length).fill(0));
@@ -227,58 +339,27 @@
       if (isDutyExempt(S, t)) { t.dutyD = ''; t.dutyP = ''; }
     }
 
-    // 2) Yalnızca nöbet tutacak öğretmenlere ders programına göre nöbet günü ve yeri dağıtılır
+    // 2) Yalnızca nöbet tutacak öğretmenlere yığılmasız, eşit ve ders yoğunluğuna göre optimal dağıtım (haftada max 1 gün)
     const eligible = S.teachers.filter(t => !isDutyExempt(S, t));
-    const list = eligible.map(t => {
-      const a = loadsByT[t.id] || Array(D).fill(0);
-      const open = Array.from({ length: D }, (_, d) => Array.from({ length: +S.school.P }, (_, p) => (t.av || {})[d + '-' + p] !== 1).some(Boolean));
-      const taughtDays = [...Array(D).keys()].filter(d => a[d] > 0);
-      const openDays = [...Array(D).keys()].filter(d => open[d]);
-      const days = (avoidZeroDay && taughtDays.length) ? taughtDays : (openDays.length ? openDays : [...Array(D).keys()]);
-      return { t, a, days };
-    }).filter(x => x.days.length).sort((x, y) => x.days.length - y.days.length);
+    const daysAssigned = assignBalancedDutyDays(eligible, loadsByT, D, P, strategy, avoidZeroDay);
 
     let n = 0;
-    for (const x of list) {
-      const dayTotal = d => cnt[d].reduce((u, v) => u + v, 0);
-      let bestDay = x.days[0];
-
-      if (strategy === 'min_lessons') {
-        // Önce en az dersinin olduğu gün (en az yoğun nöbet günü eşitlik bozar)
-        const minL = Math.min(...x.days.map(d => x.a[d]));
-        const nearMin = x.days.filter(d => x.a[d] <= minL + 1);
-        bestDay = nearMin.reduce((b, d) => {
-          if (x.a[d] !== x.a[b]) return x.a[d] < x.a[b] ? d : b;
-          return dayTotal(d) < dayTotal(b) ? d : b;
-        }, nearMin[0]);
-      } else if (strategy === 'max_lessons') {
-        // Önce en çok dersinin olduğu gün (en az yoğun nöbet günü eşitlik bozar)
-        const maxL = Math.max(...x.days.map(d => x.a[d]));
-        const nearMax = x.days.filter(d => x.a[d] >= maxL - 1);
-        bestDay = nearMax.reduce((b, d) => {
-          if (x.a[d] !== x.a[b]) return x.a[d] > x.a[b] ? d : b;
-          return dayTotal(d) < dayTotal(b) ? d : b;
-        }, nearMax[0]);
-      } else {
-        // Dengeli: en az görevli olan gün, eşitlikte dersi olan/yüksek olan gün
-        bestDay = x.days.reduce((b, d) => {
-          const s = dayTotal(d), sb = dayTotal(b);
-          return s < sb || (s === sb && x.a[d] > x.a[b]) ? d : b;
-        }, x.days[0]);
-      }
-
+    for (let i = 0; i < eligible.length; i++) {
+      const bestDay = daysAssigned[i];
+      if (bestDay < 0 || bestDay >= D) continue;
       const pi = cnt[bestDay].indexOf(Math.min(...cnt[bestDay]));
       cnt[bestDay][pi]++;
-      x.t.dutyD = String(bestDay);
-      x.t.dutyP = pl[pi];
+      eligible[i].dutyD = String(bestDay);
+      eligible[i].dutyP = pl[pi];
       n++;
     }
 
     // 3) Müdür yardımcıları yalnızca "Nöbetçi İdareci" sütununa dengeli dağıtılır (Okul Müdürü eklenmez)
     const vps = [...new Set([
+      ...(S.school && S.school.mudurYardimcisi ? [S.school.mudurYardimcisi.trim()] : []),
       ...myList(S).map(m => (m.name || '').trim()).filter(Boolean),
       ...S.teachers.filter(t => t.role === 'mudur_yardimcisi').map(t => (t.name || '').trim()).filter(Boolean)
-    ])];
+    ].filter(Boolean))];
     if (vps.length) {
       dCfg.admin = dCfg.admin || {};
       for (let d = 0; d < D; d++) dCfg.admin[d] = vps[d % vps.length];
@@ -617,7 +698,11 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
       x.textAlign = 'left';
     }
     x.fillStyle = '#14171c'; x.font = '600 46px Rubik, Arial'; x.fillText(kind === 't' ? e.name : e.name + ' sınıfı', 48, 92);
-    x.font = '26px Inter, Arial'; x.fillStyle = '#5a616c'; x.fillText(S.school.name + ' · ' + S.school.year + ' · haftalık ders programı', 48, 134);
+    const mgrParts = [S.school.mudur ? 'Okul Müdürü: ' + S.school.mudur : '', defaultVicePrincipalName(S) ? 'Md. Yrd.: ' + defaultVicePrincipalName(S) : ''].filter(Boolean).join(' · ');
+    x.font = '24px Inter, Arial'; x.fillStyle = '#5a616c'; x.fillText(kurumAdi(S) + ' · ' + donemText(S) + ' · haftalık ders programı', 48, 130);
+    if (mgrParts) {
+      x.font = '19px Inter, Arial'; x.fillStyle = '#6c7380'; x.fillText(mgrParts, 48, 160);
+    }
     const cw = (W - 48 - lw - 24) / D;
     x.font = '600 24px Inter, Arial'; x.fillStyle = '#14171c';
     EP.GK.slice(0, D).forEach((g, d) => { x.textAlign = 'center'; x.fillText(EP.GUN[d], 48 + lw + d * cw + cw / 2, top - 22); });
@@ -704,15 +789,16 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
     const tab = (S.ui.rtab && RTABS.some(x => x[0] === S.ui.rtab)) ? S.ui.rtab : 'cp';
     const r = rep(S), o = EP.occ(S), tot = o.m.blocks.length;
     const head = H('Raporlar ve Çıktılar', isMember
-      ? 'EvrakPlus üyeliğiniz aktif: tüm PDF, Excel, Word ve PNG çıktılarınız tamamen temiz ve filigransız olarak hazırlanır.'
+      ? 'EvrakPlus üyeliğiniz aktif: tüm PDF, Yazdır, Word ve WhatsApp PNG çıktılarınız tamamen temiz ve filigransız olarak hazırlanır.'
       : 'Üye olmadan da tüm çıktıları alabilirsiniz (üyesiz çıktılarda EVRAK PLUS filigranı yer alır). Ücretsiz EvrakPlus girişi yaparak filigransız temiz çıktı alabilirsiniz.',
       `<button class="btn pri" data-act="exAllPdf">Tüm Belgeleri PDF İndir (.pdf)</button>`);
     const tabs = `<div class="tabs" style="margin-bottom:12px;display:inline-flex">${RTABS.map(x => `<button data-act="rtab" data-v="${x[0]}" class="${tab === x[0] ? 'on' : ''}">${x[1]}</button>`).join('')}</div>`;
-    const sets = `<details class="card" style="margin-bottom:12px;padding:12px 16px" ${!r.mudur || !r.gecerli ? 'open' : ''}><summary>Belge bilgileri ve kağıt ayarı ${!r.mudur || !r.gecerli ? '<span class="tag" style="background:var(--warnBg);color:var(--warn)">eksik</span>' : ''}</summary>
+    const vpCur = defaultVicePrincipalName(S);
+    const sets = `<details class="card" style="margin-bottom:12px;padding:12px 16px" ${!r.mudur || !r.gecerli ? 'open' : ''}><summary>Belge bilgileri ve kağıt ayarı <span class="small muted">· Okul Ayarları’ndan otomatik gelir</span> ${!r.mudur || !r.gecerli ? '<span class="tag" style="background:var(--warnBg);color:var(--warn)">eksik</span>' : ''}</summary>
       <div class="fields" style="margin-top:10px">
         <label class="f">Kurum adı (başlıkta)<input data-rep="kurum" value="${EP.esc(r.kurum)}" placeholder="${EP.esc(S.school.name)}"></label>
         <label class="f">Okul müdürü<input data-k="school.mudur" value="${EP.esc(r.mudur)}" placeholder="Ad Soyad"></label>
-        <label class="f">Düzenleyen müdür yardımcısı<select data-rep="myId"><option value="">— imza yok —</option>${myList(S).map(m => `<option value="${m.id}" ${r.myId === m.id ? 'selected' : ''}>${EP.esc(m.name || '(adsız)')}</option>`).join('')}</select></label>
+        <label class="f">Müdür yardımcısı (imza)<input data-k="school.mudurYardimcisi" value="${EP.esc(S.school.mudurYardimcisi || '')}" placeholder="${EP.esc(vpCur || 'Ad Soyad')}"></label>
         <label class="f">Geçerlilik tarihi<input type="date" data-rep="gecerli" value="${EP.esc(r.gecerli)}"></label>
         <label class="f">Sayı<input data-rep="sayi" value="${EP.esc(r.sayi)}"></label>
         <label class="f">Kağıt boyutu<select data-rep="paper"><option value="A4" ${r.paper !== 'A3' ? 'selected' : ''}>A4</option><option value="A3" ${r.paper === 'A3' ? 'selected' : ''}>A3 (Geniş Çarşaf)</option></select></label>
@@ -721,6 +807,38 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
     if (tab === 'kq') return head + tabs + vQuality(S, o, tot);
     if (!tot && tab !== 'nb') return head + tabs + sets + '<div class="empty">Önce ders ekleyip dağıtım yapın.</div>';
 
+    // Sınıflar ve Öğretmenler için ayrı ayrı WhatsApp Görseli kartı
+    const waClsId = S.ui.waCls && S.classes.some(c => c.id === S.ui.waCls) ? S.ui.waCls : (S.classes[0] ? S.classes[0].id : '');
+    const waTchId = S.ui.waTch && S.teachers.some(t => t.id === S.ui.waTch) ? S.ui.waTch : (S.teachers[0] ? S.teachers[0].id : '');
+    const waCard = tab !== 'nb' ? `<div class="card" style="margin-bottom:12px;padding:12px 16px">
+      <div class="row" style="justify-content:space-between;margin-bottom:8px">
+        <div>
+          <h3 style="margin:0">WhatsApp Görselleri (.png) — Sınıflar ve Öğretmenler Ayrı Ayrı</h3>
+          <p class="small muted" style="margin-top:2px">Sınıf veya öğretmen programlarını yüksek çözünürlüklü, renkli WhatsApp paylaşım görseli (PNG) olarak tek tek veya toplu indirin.</p>
+        </div>
+      </div>
+      <div class="grid2" style="gap:10px">
+        <div class="row" style="gap:8px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--soft)">
+          <div style="flex:1;min-width:140px"><b class="small" style="display:block;margin-bottom:4px">Sınıflar WhatsApp Görseli</b>
+            <select data-ui="waCls" style="width:100%">${S.classes.map(c => `<option value="${c.id}" ${waClsId === c.id ? 'selected' : ''}>${EP.esc(c.name)}</option>`).join('')}</select>
+          </div>
+          <div class="row" style="gap:6px;align-self:flex-end">
+            <button class="btn sm pri" data-act="waSingle" data-kind="c" ${waClsId ? '' : 'disabled'}>Sınıf Görseli (.png)</button>
+            <button class="btn sm" data-act="waBatch" data-kind="c" ${S.classes.length ? '' : 'disabled'}>Tüm Sınıflar (${S.classes.length})</button>
+          </div>
+        </div>
+        <div class="row" style="gap:8px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--soft)">
+          <div style="flex:1;min-width:160px"><b class="small" style="display:block;margin-bottom:4px">Öğretmenler WhatsApp Görseli</b>
+            <select data-ui="waTch" style="width:100%">${S.teachers.map(t => `<option value="${t.id}" ${waTchId === t.id ? 'selected' : ''}>${EP.esc(t.name)}</option>`).join('')}</select>
+          </div>
+          <div class="row" style="gap:6px;align-self:flex-end">
+            <button class="btn sm pri" data-act="waSingle" data-kind="t" ${waTchId ? '' : 'disabled'}>Öğretmen Görseli (.png)</button>
+            <button class="btn sm" data-act="waBatch" data-kind="t" ${S.teachers.length ? '' : 'disabled'}>Tüm Öğretmenler (${S.teachers.length})</button>
+          </div>
+        </div>
+      </div>
+    </div>` : '';
+
     let ctl = '', sel = '', extraCard = '';
     if (tab === 'cp' || tab === 'tp') {
       const ents = tab === 'cp' ? S.classes : S.teachers, k = tab === 'cp' ? 'rselc' : 'rselt';
@@ -728,18 +846,16 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
       ctl = `<select data-ui="${k}" aria-label="Seçim"><option value="">Tümü (${ents.length})</option>${ents.map(e => `<option value="${e.id}" ${sel === e.id ? 'selected' : ''}>${EP.esc(e.name)}</option>`).join('')}</select>
         <button class="btn pri" data-act="exPdf">PDF İndir (.pdf)</button>
         <button class="btn" data-act="exPrint">Yazdır</button>
-        <button class="btn" data-act="exExcel">Excel (.xls)</button>
         <button class="btn" data-act="exWord">Word (.doc)</button>
-        <button class="btn" data-act="exPng2" ${sel ? '' : 'disabled title="Önce tek sınıf veya öğretmen seçin"'}>WhatsApp görseli (.png)</button>`;
+        <button class="btn" data-act="exPng2" ${sel ? '' : 'disabled title="Önce tek sınıf veya öğretmen seçin"'}>Seçili WhatsApp Görseli (.png)</button>`;
     } else if (tab === 'cs' || tab === 'ts') {
       ctl = `<button class="btn pri" data-act="exPdf">PDF İndir (.pdf)</button>
         <button class="btn" data-act="exPrint">Yazdır</button>
-        <button class="btn" data-act="exExcel">Excel (.xls)</button>
         <button class="btn" data-act="exWord">Word (.doc)</button>
         <button class="btn" data-act="exCsv">Çarşaf tablosu (.csv)</button>`;
     } else if (tab === 'nb') {
       const pl = dutyPlaces(S), adm = (S.duty && S.duty.admin) || {}, D = +S.school.D;
-      const vpNames = [...new Set([...myList(S).map(m => m.name), ...S.teachers.filter(t => t.role === 'mudur_yardimcisi').map(t => t.name)].filter(Boolean))];
+      const vpNames = [...new Set([...myList(S).map(m => m.name), S.school.mudurYardimcisi, ...S.teachers.filter(t => t.role === 'mudur_yardimcisi').map(t => t.name)].filter(Boolean))];
       ctl = `<button class="btn pri" data-act="exPdf">PDF İndir (.pdf)</button>
         <button class="btn" data-act="exPrint">Yazdır</button>
         <button class="btn" data-act="exWord">Word (.doc)</button>
@@ -771,7 +887,7 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
     }
 
     const prev = docsFor(S, tab, sel, { watermark: !isMember });
-    return head + tabs + sets + `<div class="row" style="margin-bottom:12px">${ctl}</div>` + extraCard + `<div class="paperwrap">${prev}</div>`;
+    return head + tabs + sets + waCard + `<div class="row" style="margin-bottom:12px">${ctl}</div>` + extraCard + `<div class="paperwrap">${prev}</div>`;
   }
 
   Object.assign(EP, {

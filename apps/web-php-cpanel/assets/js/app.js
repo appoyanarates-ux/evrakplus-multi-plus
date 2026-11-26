@@ -184,7 +184,7 @@
     $('#mX').addEventListener('click', () => { M.innerHTML = ''; });
   }
 
-  const APP_VER = (bridge && bridge.appVersion) || '2.3.0';
+  const APP_VER = (bridge && bridge.appVersion) || '2.4.0';
   let updateInfo = null;
   let updateProgress = null;
   const isMember = () => Boolean(authUser && (authUser.loggedIn || authUser.entitlementValid));
@@ -231,8 +231,11 @@
 
   async function printReportNow(html, landscape) {
     if (bridge && typeof bridge.printHtml === 'function') {
+      toast('Yazıcı penceresi açılıyor…');
       try {
-        await bridge.printHtml({ html, landscape: Boolean(landscape) });
+        const res = await bridge.printHtml({ html, landscape: Boolean(landscape) });
+        if (res && res.ok) toast('Yazdırma işi yazıcıya gönderildi.');
+        else if (res && res.error && !res.canceled && !/cancel/i.test(res.error)) toast('Yazdırma uyarısı: ' + res.error);
       } catch (err) {
         toast('Yazdırma hatası: ' + (err && err.message ? err.message : String(err)));
       }
@@ -479,19 +482,20 @@
   /* 2. Okul Ayarları */
   function adminCard() {
     const s = S.school, my = EP.myList(S);
-    return `<div class="card" style="margin-top:14px"><h2>Okul yönetimi ve dönem</h2>
-      <p class="small muted" style="margin-top:4px">Bu bilgiler program, çarşaf ve nöbet çıktılarının başlık ve imza alanlarında kullanılır.</p>
+    return `<div class="card" style="margin-top:14px"><h2>Okul Yönetimi ve Dönem Bilgileri</h2>
+      <p class="small muted" style="margin-top:4px">Burada belirlenen Okul Adı, Okul Müdürü ve Müdür Yardımcısı bilgileri tüm raporlarda, resmi çıktılarda, nöbet çizelgelerinde ve WhatsApp görsellerinde otomatik kullanılır.</p>
       <div class="fields" style="margin-top:12px">
-        <label class="f">Okul müdürü<input data-k="school.mudur" value="${esc(s.mudur || '')}" placeholder="Ad Soyad"></label>
+        <label class="f">Okul müdürü adı<input data-k="school.mudur" value="${esc(s.mudur || '')}" placeholder="Ad Soyad"></label>
+        <label class="f">Müdür yardımcısı adı (Program / İmza)<input data-k="school.mudurYardimcisi" value="${esc(s.mudurYardimcisi || '')}" placeholder="Ad Soyad"></label>
         <label class="f">Dönem<select data-k="school.donem">${EP.DONEM.map(v => `<option value="${v}" ${(s.donem || '') === v ? 'selected' : ''}>${v || '— seçilmedi —'}</option>`).join('')}</select></label>
         <label class="f">Dönem başlangıcı<input type="date" data-k="school.donemBas" value="${esc(s.donemBas || '')}"></label>
         <label class="f">Dönem bitişi<input type="date" data-k="school.donemBit" value="${esc(s.donemBit || '')}"></label>
       </div>
-      <h3 style="margin:14px 0 6px">Müdür yardımcıları</h3>
+      <h3 style="margin:14px 0 6px">Diğer müdür yardımcıları (Nöbetçi İdareci listesi)</h3>
       ${my.length ? `<div class="diag" style="gap:6px">${my.map(m => `<div class="row" style="gap:8px">
         <input data-my="${m.id}" data-f="name" value="${esc(m.name)}" placeholder="Ad Soyad" style="max-width:240px">
         <input data-my="${m.id}" data-f="gorev" value="${esc(m.gorev || '')}" placeholder="Görev alanı (ör. ders programı, nöbet)" style="max-width:300px">
-        <button class="btn sm ghost" data-act="myDel" data-id="${m.id}">Sil</button></div>`).join('')}</div>` : '<p class="small muted">Henüz müdür yardımcısı eklenmedi.</p>'}
+        <button class="btn sm ghost" data-act="myDel" data-id="${m.id}">Sil</button></div>`).join('')}</div>` : '<p class="small muted">İsteğe bağlı olarak ek müdür yardımcıları ekleyebilirsiniz.</p>'}
       <button class="btn sm" data-act="myAdd" style="margin-top:8px">Müdür yardımcısı ekle</button></div>`;
   }
 
@@ -524,30 +528,49 @@
 
   function vOkul() {
     const s = S.school, tm = EP.times(S), T = EP.typeOf(S), stab = S.ui.stab === 'rooms' ? 'rooms' : 'genel';
-    const head = H('Okul Ayarları', 'Kurum bilgilerini, zil saatlerini, okul yönetimini ve derslik/bina ayarlarını tek merkezden yönetin.');
+    const hasCustomTimes = Array.isArray(s.customTimes) && s.customTimes.some(x => x && (x.start || x.end));
+    const head = H('Okul Ayarları', 'Okul adı, okul müdürü, müdür yardımcısı, ders/zil saatleri ve derslik ayarlarını tek merkezden belirleyin; tüm raporlarda ve çıktılarda otomatik kullanılır.');
     const tabs = `<div class="tabs" style="margin-bottom:14px;display:inline-flex">
       <button data-act="stab" data-v="genel" class="${stab === 'genel' ? 'on' : ''}">Genel Bilgiler, Zil ve Yönetim</button>
       <button data-act="stab" data-v="rooms" class="${stab === 'rooms' ? 'on' : ''}">Derslikler ve Binalar (${(S.rooms || []).length} derslik · ${(S.buildings || []).length} bina)</button>
     </div>`;
     if (stab === 'rooms') return head + tabs + roomsContent();
     return head + tabs +
-      `<div class="grid2"><div class="card"><h2>Kurum ve okul türü</h2><div class="fields" style="margin-top:12px">
-        <label class="f">Okul adı<input data-k="school.name" value="${esc(s.name)}"></label>
+      `<div class="grid2"><div class="card"><h2>Kurum, Yönetim ve Okul Türü</h2><div class="fields" style="margin-top:12px">
+        <label class="f">Okul adı<input data-k="school.name" value="${esc(s.name)}" placeholder="ör. Atatürk Anadolu Lisesi"></label>
         <label class="f">Eğitim yılı<input data-k="school.year" value="${esc(s.year)}"></label>
+        <label class="f">Okul müdürü adı<input data-k="school.mudur" value="${esc(s.mudur || '')}" placeholder="Ad Soyad"></label>
+        <label class="f">Müdür yardımcısı adı<input data-k="school.mudurYardimcisi" value="${esc(s.mudurYardimcisi || '')}" placeholder="Ad Soyad"></label>
         <label class="f" style="grid-column:1/-1">Okul türü<select data-k="school.type">${(EP.TYPE_GROUPS || []).map(grp => `<optgroup label="${esc(grp.label)}">${grp.types.filter(k => EP.TYPES[k]).map(k => { const t = EP.TYPES[k]; return `<option value="${k}" ${s.type === k ? 'selected' : ''}>${esc(t.ad)} (${EP.gradeRange(t.grades)} · ${[...new Set(t.total)].join('/')} sa)</option>`; }).join('')}</optgroup>`).join('')}<optgroup label="Özel / Şablonsuz"><option value="" ${!T ? 'selected' : ''}>Diğer / şablonsuz</option></optgroup></select></label>
         <label class="f">Eğitim düzeni<select data-k="school.educationMode"><option value="full_day" ${s.educationMode !== 'dual_shift' ? 'selected' : ''}>Tam gün</option><option value="dual_shift" ${s.educationMode === 'dual_shift' ? 'selected' : ''}>İkili öğretim (Sabahçı / Öğlenci)</option></select></label>
         <label class="f">Gün sayısı<select data-k="school.D">${[5, 6].map(v => `<option ${+s.D === v ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
         <label class="f">Günlük ders sayısı<input type="number" min="1" max="12" data-k="school.P" value="${s.P}"></label>
       </div>
       ${T ? `<div class="msg ${T.isDraft ? 'warn' : 'info'}" style="margin-top:12px"><span class="ic">${T.isDraft ? '!' : 'i'}</span><div><b>${esc(T.ad)}</b>: haftalık ${[...new Set(T.total)].join('/')} saat. ${T.P !== +s.P ? `Önerilen günlük ders sayısı ${T.P}.` : 'Günlük ders sayısı uygun.'}<div class="sug">${esc(T.kaynak)} · <a href="${T.src}" target="_blank" rel="noopener">TTKB Kaynağı</a></div></div>${T.P !== +s.P ? `<button class="btn sm" data-act="applyP">${T.P} yap</button>` : '<span></span>'}</div>` : ''}</div>
-      <div class="card"><h2>Zil saatleri</h2><div class="fields" style="margin-top:12px">
-        <label class="f">İlk ders<input type="time" data-k="school.start" value="${esc(s.start)}"></label>
-        <label class="f">Ders süresi (dk)<input type="number" data-k="school.len" value="${s.len}"></label>
-        <label class="f">Teneffüs (dk)<input type="number" data-k="school.brk" value="${s.brk}"></label>
-        <label class="f">Öğle arası şu dersten sonra<input type="number" data-k="school.lunchAfter" value="${s.lunchAfter}"></label>
-        <label class="f">Öğle arası (dk)<input type="number" data-k="school.lunchLen" value="${s.lunchLen}"></label>
-      </div>
-      <div class="tray" style="margin-top:14px">${tm.map((t, i) => `<span class="tag" style="background:var(--soft)">${i + 1}. ders ${t}</span>`).join('')}</div></div></div>` + adminCard();
+      <div class="card">
+        <div class="row" style="justify-content:space-between">
+          <h2>Okul Zil ve Ders Saatleri</h2>
+          ${hasCustomTimes ? '<button class="btn sm ghost" data-act="resetCustomTimes">Otomatik saatlere sıfırla</button>' : ''}
+        </div>
+        <div class="fields" style="margin-top:10px">
+          <label class="f">İlk ders<input type="time" data-k="school.start" value="${esc(s.start)}"></label>
+          <label class="f">Ders süresi (dk)<input type="number" data-k="school.len" value="${s.len}"></label>
+          <label class="f">Teneffüs (dk)<input type="number" data-k="school.brk" value="${s.brk}"></label>
+          <label class="f">Öğle arası şu dersten sonra<input type="number" data-k="school.lunchAfter" value="${s.lunchAfter}"></label>
+          <label class="f">Öğle arası (dk)<input type="number" data-k="school.lunchLen" value="${s.lunchLen}"></label>
+        </div>
+        <p class="small muted" style="margin:10px 0 6px">Her dersin başlangıç ve bitiş saatini aşağıdan tek tek özelleştirebilirsiniz (program şablonlarında, PDF/Yazdır belgelerinde ve WhatsApp görsellerinde birebir görünür):</p>
+        <div style="max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:6px 8px">
+          <table class="tbl"><thead><tr><th style="width:74px">Ders</th><th>Başlangıç</th><th>Bitiş</th></tr></thead><tbody>
+          ${tm.map((rng, p) => {
+            const parts = rng.split('–');
+            return `<tr><td><b>${p + 1}. ders</b></td>
+              <td><input type="time" data-ctime="${p}|start" value="${esc(parts[0] || '')}" style="min-height:32px;padding:4px 8px"></td>
+              <td><input type="time" data-ctime="${p}|end" value="${esc(parts[1] || '')}" style="min-height:32px;padding:4px 8px"></td></tr>`;
+          }).join('')}
+          </tbody></table>
+        </div>
+      </div></div>` + adminCard();
   }
 
   /* 3. Öğretmenler */
@@ -1378,7 +1401,11 @@
   function grid1(o, kind, ent, ed) {
     const D = +S.school.D, P = +S.school.P, tm = EP.times(S), G = (kind === 'c' ? o.cG : kind === 't' ? o.tG : o.rG)[ent.id] || {};
     const rel = ed && (kind === 'c' ? S.classes[ed.m.blocks[ed.i].c]?.id === ent.id : kind === 't' ? (S.teachers[ed.m.blocks[ed.i].t] || {}).id === ent.id : false);
-    return `<table class="tt"><thead><tr><th class="pl"></th>${GUN.slice(0, D).map(g => `<th>${g}</th>`).join('')}</tr></thead><tbody>
+    const dayHead = (g, d) => {
+      const allClosed = Array.from({ length: P }, (_, p) => slotClosed(kind, ent, d + '-' + p)).every(Boolean);
+      return `<th data-daytoggle="1" data-kind="${kind}" data-ent="${ent.id}" data-d="${d}" style="cursor:pointer;user-select:none" title="Bu günü kapatmak veya açmak için çift tıklayın">${g}${allClosed ? ' <span class="tag" style="background:var(--errBg);color:var(--err);font-size:10px;padding:1px 5px">Kapalı</span>' : ''}</th>`;
+    };
+    return `<table class="tt"><thead><tr><th class="pl"></th>${GUN.slice(0, D).map((g, d) => dayHead(g, d)).join('')}</tr></thead><tbody>
       ${Array.from({ length: P }, (_, p) => `<tr><th class="pl"><b>${p + 1}. ders</b><small>${tm[p] || ''}</small></th>${GUN.slice(0, D).map((g, d) => {
         const key = d + '-' + p;
         const closed = (kind === 'c' || kind === 'r') ? (ent.closed || []).includes(key) : (ent.av || {})[key] === 1;
@@ -1589,6 +1616,33 @@
       </div></details>`;
   }
 
+  function savedPlansCard(compact) {
+    const plans = Array.isArray(S.savedPlans) ? S.savedPlans : [];
+    const inner = `<div class="row" style="gap:8px;align-items:flex-end;margin-top:10px;flex-wrap:wrap">
+        <label class="f" style="flex:1;min-width:220px">Dağıtım adı<input id="spName_${compact ? 'd' : 'p'}" placeholder="ör. 1. Dönem Kesin Program, Alternatif A"></label>
+        <label class="f" style="flex:1;min-width:180px">Not (isteğe bağlı)<input id="spNote_${compact ? 'd' : 'p'}" placeholder="ör. Sıfır boşluk, Cuma boş"></label>
+        <button class="btn pri" data-act="savePlanNow" data-src="${compact ? 'd' : 'p'}">Mevcut Dağıtımı Kaydet</button>
+      </div>
+      ${plans.length ? `<div class="scroll" style="margin-top:12px"><table class="tbl"><thead><tr><th>Kayıt Adı</th><th>Tarih</th><th class="n">Yerleşen</th><th class="n">Kilitli</th><th style="text-align:right">İşlemler</th></tr></thead><tbody>
+        ${plans.map(sp => `<tr>
+          <td><b>${esc(sp.name)}</b>${sp.note ? `<br><small class="muted">${esc(sp.note)}</small>` : ''}</td>
+          <td class="small muted">${new Date(sp.savedAt).toLocaleString('tr-TR')}</td>
+          <td class="n"><b>${sp.placed}</b>/${sp.total}</td>
+          <td class="n">${sp.locked || 0}</td>
+          <td style="text-align:right;white-space:nowrap">
+            <button class="btn sm pri" data-act="loadSavedPlan" data-id="${sp.id}" title="Bu kayıtlı dağıtımı programa geri yükle">Uygula</button>
+            <button class="btn sm" data-act="dlSavedPlan" data-id="${sp.id}" title="Bu dağıtımı JSON dosyası olarak indir">İndir</button>
+            <button class="btn sm ghost" data-act="delSavedPlan" data-id="${sp.id}">Sil</button>
+          </td>
+        </tr>`).join('')}
+      </tbody></table></div>` : '<p class="small muted" style="margin-top:10px">Henüz kayıtlı dağıtım yok. Beğendiğiniz bir ders dağıtımını ad vererek kaydedip dilediğiniz zaman tek tıkla geri yükleyebilirsiniz.</p>'}`;
+    if (compact) {
+      return `<details class="card" style="margin-bottom:12px;padding:12px 16px" ${plans.length ? '' : ''}><summary><b>Kayıtlı ders dağıtımları (${plans.length})</b> <span class="small muted">· yaptığınız dağıtımları ad vererek saklayın ve sonradan tek tıkla geri yükleyin</span></summary>${inner}</details>`;
+    }
+    return `<div class="card" style="margin-top:14px"><h2>Kayıtlı Ders Dağıtımları (${plans.length})</h2>
+      <p class="small muted" style="margin-top:4px">Farklı dağıtım senaryolarını adlandırıp kaydedin; istediğiniz zaman programa geri yükleyin veya ayrı JSON dosyası olarak paylaşın.</p>${inner}</div>`;
+  }
+
   function vDagitim() {
     const o = EP.occ(S), tot = o.m.blocks.length, pl = tot - o.un.length, L = S.last, errs = pc.filter(x => x.lvl === 'err').length;
 
@@ -1600,6 +1654,7 @@
           <button class="btn" data-act="improve" ${running || o.un.length || !tot ? 'disabled' : ''}>İyileştir</button>
           <button class="btn" data-act="stop" ${running ? '' : 'disabled'}>Durdur</button>
           <button class="btn" data-act="maxFinish" ${running ? '' : 'disabled'} title="Şu ana kadar dağıtılan dersleri şablona işler ve bitirir; yerleşmeyenler altta listelenir">Maksimumda bitir</button>
+          <button class="btn" data-act="quickSavePlan" ${running || !pl ? 'disabled' : ''} title="Mevcut ders dağıtımını kayıtlı dağıtımlar listesine ekler">Dağıtımı Kaydet</button>
           <button class="btn ghost" data-act="clearPlan" ${running || !pl ? 'disabled' : ''}>Dağıtımı temizle</button>
           <button class="btn ghost" data-act="verify">Kontrol et</button>
         </div>
@@ -1620,14 +1675,14 @@
       ${(errs || (L && L.status === 'partial')) ? `<div class="msg info"><span class="ic">?</span><div><b>Hangi öğretmenin kapalı saatini açarsam çözülür?</b><div class="sug">Kapalı saati olan her öğretmen için kısa deneme yapılarak sorunu tek başına çözen öğretmenler bulunur.</div>${relaxHtml()}</div><button class="btn sm" data-act="relax" ${running ? 'disabled' : ''}>Öneri bul</button></div>` : ''}
       </div></details>`;
 
-    return H('Dağıtım ve Program', 'Hücreye sol tıklayarak işlem menüsünü, boş hücreye sağ tıklayarak hızlı ders ekleme menüsünü açın; dersleri sürükle-bırak ile taşıyın veya yer değiştirin.') +
-      eng + diag + rehSlotCard(false) + lockToolsCard() + board(o, true) + reasonsHtml(o);
+    return H('Dağıtım ve Program', 'Dolu derse çift tıklayarak kilitleyin/açın; gün başlığına çift tıklayarak o günü kapatın/açın; boş hücreye çift tıklayarak o saati kapatın/açın.') +
+      eng + diag + rehSlotCard(false) + lockToolsCard() + savedPlansCard(true) + board(o, true) + reasonsHtml(o);
   }
 
   /* 12. Haftalık Ders Programları */
   function vTimetables() {
     const o = EP.occ(S);
-    return H('Haftalık Ders Programları', 'Sınıf, öğretmen, derslik ve tam çarşaf görünümleri. Herhangi bir derse çift tıklayarak anında kilitleyip açabilir veya Toplu Kilit Seçimi ile birden fazla dersi seçebilirsiniz.',
+    return H('Haftalık Ders Programları', 'Sınıf, öğretmen, derslik ve tam çarşaf görünümleri. Gün başlığına çift tıklayarak günü kapatıp açabilir, boş hücreye çift tıklayarak saati kapatıp açabilir, dolu derse çift tıklayarak kilitleyebilirsiniz.',
       `<button class="btn pri" data-step="reports">Resmi Belge Önizle / Yazdır</button>`) + lockToolsCard() + board(o, true);
   }
 
@@ -1645,13 +1700,13 @@
   /* 11. Okul Nöbeti (Haftalık & Aylık Nöbet Oluşturma) */
   function vDuty() {
     const D = +S.school.D || 5, pl = EP.dutyPlaces(S), dCfg = S.duty || {};
-    const adm = dCfg.admin || {}, strategy = dCfg.strategy || 'min_lessons';
+    const adm = dCfg.admin || {}, strategy = dCfg.strategy || 'max_lessons';
     const avoidZeroDay = dCfg.avoidZeroDay !== false;
     const dtab = S.ui.dutyTab === 'monthly' ? 'monthly' : 'weekly';
     const ym = dCfg.month || EP.defaultYearMonth();
     const mMode = dCfg.monthlyMode || 'rotate';
     const o = EP.occ(S), loadsByT = EP.teacherDailyLoads(S, o);
-    const vpNames = [...new Set([...EP.myList(S).map(m => m.name), ...S.teachers.filter(t => t.role === 'mudur_yardimcisi').map(t => t.name)].filter(Boolean))];
+    const vpNames = [...new Set([S.school.mudurYardimcisi, ...EP.myList(S).map(m => m.name), ...S.teachers.filter(t => t.role === 'mudur_yardimcisi').map(t => t.name)].filter(Boolean))];
     const eligibleCount = S.teachers.filter(t => !EP.isDutyExempt(S, t)).length;
     const exemptCount = S.teachers.length - eligibleCount;
     const assignedCount = S.teachers.filter(t => !EP.isDutyExempt(S, t) && EP.dutyOf(t).d >= 0).length;
@@ -1723,7 +1778,6 @@
             ${closedRowsCount ? `<button class="btn sm ghost" data-act="clearMonthClosed">Bu Aydaki Kapalı Günleri Aç (${closedRowsCount})</button>` : ''}
             <button class="btn pri" data-act="exMonthlyPdf">Aylık PDF İndir (.pdf)</button>
             <button class="btn" data-act="exMonthlyPrint">Yazdır</button>
-            <button class="btn" data-act="exMonthlyExcel">Excel (.xls)</button>
             <button class="btn" data-act="exMonthlyWord">Word (.doc)</button>
           </div>
         </div>
@@ -1853,6 +1907,7 @@
           <button class="btn" data-act="cloudSync">Buluta Senkronize Et</button>
         </div>
       </div>
+      ${savedPlansCard(false)}
       <div class="card" style="margin-top:14px"><h2>Otomatik Yerel Geçmiş (Son 8 Kayıt)</h2>
         ${h.length ? `<table class="tbl" style="margin-top:8px"><tbody>${h.map((x, i) => `<tr><td>${new Date(x.at).toLocaleString('tr-TR')}</td><td>${esc(x.label)}</td><td style="text-align:right"><button class="btn sm" data-act="restore" data-i="${i}">Geri yükle</button></td></tr>`).join('')}</tbody></table>` : '<p class="small muted" style="margin-top:6px">Henüz kayıt yok.</p>'}
       </div>`;
@@ -2301,6 +2356,91 @@
     toast(`${cd ? cName(cd.classId) + ' ' + SS(cd.subj) : 'Ders'} ${isLocked ? 'kilitlendi' : 'kilidi açıldı'}.`);
   }
 
+  async function toggleEntityDayQuick(kind, entId, d) {
+    const e = entOf(kind, entId);
+    if (!e) return;
+    const now = Date.now();
+    if (now - lastDblToggleAt < 250) return;
+    lastDblToggleAt = now;
+    lastCellClick = null;
+    const P = +S.school.P || 7;
+    const keys = Array.from({ length: P }, (_, p) => d + '-' + p);
+    const allClosed = keys.every(k => slotClosed(kind, e, k));
+    const kd = kind === 'c' ? 'cls' : kind === 'r' ? 'room' : 't';
+    const pre = kd !== 'room' ? new Set(EP.lockedInClosed(S, kd, entId).map(x => x.k)) : new Set();
+    snap();
+    if (kind === 'c' || kind === 'r') {
+      const cl = new Set(e.closed || []);
+      keys.forEach(k => (allClosed ? cl.delete(k) : cl.add(k)));
+      e.closed = [...cl];
+    } else {
+      e.av = e.av || {};
+      keys.forEach(k => { if (allClosed) { if (e.av[k] === 1) delete e.av[k]; } else e.av[k] = 1; });
+    }
+    if (!allClosed) {
+      const hit = kd !== 'room' ? EP.lockedInClosed(S, kd, entId).filter(x => !pre.has(x.k)) : [];
+      if (hit.length) {
+        commit();
+        const goOk = await warnAsk(`${GUN[d]} gününde kilitli ders var`, hit.map(x => x.txt + ' kilitli'), 'Yine de günü kapat ve kilitli dersleri çıkar');
+        if (!goOk) { S = JSON.parse(undo.pop()); commit(); toast('Vazgeçildi.'); return; }
+        hit.forEach(x => delete S.place[x.k]);
+      }
+      const { bad } = EP.placedCore(S);
+      bad.forEach(b => delete S.place[b]);
+    }
+    sel = '';
+    closePop();
+    commit();
+    toast(`${e.name} · ${GUN[d]} günü ${allClosed ? 'açıldı' : 'kapatıldı'}.`);
+  }
+
+  async function toggleEntitySlotQuick(kind, entId, key) {
+    const e = entOf(kind, entId);
+    if (!e) return;
+    const now = Date.now();
+    if (now - lastDblToggleAt < 250) return;
+    lastDblToggleAt = now;
+    lastCellClick = null;
+    const wasClosed = slotClosed(kind, e, key);
+    snap();
+    if (kind === 'c' || kind === 'r') {
+      const cl = new Set(e.closed || []);
+      if (wasClosed) cl.delete(key); else cl.add(key);
+      e.closed = [...cl];
+    } else {
+      e.av = e.av || {};
+      if (wasClosed) { if (e.av[key] === 1) delete e.av[key]; } else e.av[key] = 1;
+    }
+    sel = '';
+    closePop();
+    commit();
+    const x = key.split('-').map(Number);
+    toast(`${e.name} · ${GUN[x[0]]} ${x[1] + 1}. ders ${wasClosed ? 'açıldı' : 'kapatıldı'}.`);
+  }
+
+  function saveCurrentPlanSnapshot(customName, customNote) {
+    const o = EP.occ(S), tot = o.m.blocks.length, pl = tot - o.un.length;
+    if (!pl) { toast('Kaydedilecek yerleşmiş ders yok; önce dağıtım yapın.'); return null; }
+    S.savedPlans = Array.isArray(S.savedPlans) ? S.savedPlans : [];
+    const autoName = `${S.school.name || 'Program'} · Dağıtım #${S.savedPlans.length + 1}`;
+    const cardPatterns = {};
+    for (const c of S.cards || []) cardPatterns[c.id] = c.pattern;
+    const entry = {
+      id: uid(),
+      name: (customName || '').trim() || autoName,
+      note: (customNote || '').trim(),
+      savedAt: new Date().toISOString(),
+      placed: pl,
+      total: tot,
+      locked: EP.lockedIds(S).length,
+      place: JSON.parse(JSON.stringify(S.place || {})),
+      cardPatterns
+    };
+    S.savedPlans.unshift(entry);
+    if (S.savedPlans.length > 30) S.savedPlans = S.savedPlans.slice(0, 30);
+    return entry;
+  }
+
   function checkRehSlot(d, p, clsIds) {
     const P = +S.school.P;
     const cls = clsIds.map(id => S.classes.find(c => c.id === id)).filter(Boolean);
@@ -2666,9 +2806,17 @@
           }, 230);
           break;
         }
-        lastCellClick = null;
-        if (cellClickTimer) { clearTimeout(cellClickTimer); cellClickTimer = null; }
-        sel = ''; pop = { key, ent, kind, id: '' }; render();
+        if (!tid && (e.detail >= 2 || (lastCellClick && !lastCellClick.id && lastCellClick.ent === ent && lastCellClick.key === key && (now - lastCellClick.at) <= 550))) {
+          if (cellClickTimer) { clearTimeout(cellClickTimer); cellClickTimer = null; }
+          toggleEntitySlotQuick(kind, ent, key);
+          break;
+        }
+        lastCellClick = { id: '', ent, key, at: now };
+        if (cellClickTimer) clearTimeout(cellClickTimer);
+        cellClickTimer = setTimeout(() => {
+          cellClickTimer = null;
+          sel = ''; pop = { key, ent, kind, id: '' }; render();
+        }, 230);
       } break;
       case 'pClose': closePop(); break;
       case 'pmOpen': if (pop) { pop.add = true; pop.id = ''; pop.cls = pop.cls || ''; sel = ''; renderPop(); } break;
@@ -3144,6 +3292,98 @@
         if (!mode) break;
         downloadBlob(fileName('csv').replace('.csv', ' carsaf.csv'), EP.csvExport(S, { watermark: mode !== 'clean' }), 'text/csv;charset=utf-8');
       } break;
+      case 'quickSavePlan': {
+        const entry = saveCurrentPlanSnapshot('', S.last && S.last.note ? S.last.note : '');
+        if (!entry) break;
+        commit();
+        toast(`"${entry.name}" (${entry.placed}/${entry.total} blok) kaydedildi.`);
+      } break;
+      case 'savePlanNow': {
+        const src = a.dataset.src || 'd';
+        const nmEl = $('#spName_' + src), ntEl = $('#spNote_' + src);
+        const entry = saveCurrentPlanSnapshot(nmEl ? nmEl.value : '', ntEl ? ntEl.value : '');
+        if (!entry) break;
+        commit();
+        toast(`"${entry.name}" kayıtlı dağıtımlara eklendi.`);
+      } break;
+      case 'loadSavedPlan': {
+        const sp = (S.savedPlans || []).find(x => x.id === id);
+        if (!sp) break;
+        if (!await ask(`"${sp.name}" (${sp.placed}/${sp.total} blok) mevcut ders programına geri yüklenecek.`, 'Uygula')) break;
+        snap();
+        if (sp.cardPatterns) {
+          for (const c of S.cards || []) {
+            if (sp.cardPatterns[c.id]) c.pattern = sp.cardPatterns[c.id];
+          }
+        }
+        S.place = JSON.parse(JSON.stringify(sp.place || {}));
+        const { bad } = EP.placedCore(S);
+        bad.forEach(b => delete S.place[b]);
+        S.last = { status: bad.length ? 'partial' : 'ok', ms: 0, note: `Kayıtlı dağıtım yüklendi: ${sp.name}` };
+        step = 'auto_schedule';
+        commit();
+        toast(`"${sp.name}" programa geri yüklendi.`);
+      } break;
+      case 'dlSavedPlan': {
+        const sp = (S.savedPlans || []).find(x => x.id === id);
+        if (!sp) break;
+        const clone = JSON.parse(JSON.stringify(S));
+        clone.place = JSON.parse(JSON.stringify(sp.place || {}));
+        if (sp.cardPatterns) for (const c of clone.cards || []) if (sp.cardPatterns[c.id]) c.pattern = sp.cardPatterns[c.id];
+        const safeNm = (sp.name || 'dagitim').replace(/[\\/:*?"<>|]+/g, '').trim() || 'dagitim';
+        downloadBlob(safeNm + '.json', JSON.stringify(EP.stateToV3Project(clone), null, 2), 'application/json');
+      } break;
+      case 'delSavedPlan': {
+        const sp = (S.savedPlans || []).find(x => x.id === id);
+        if (!sp) break;
+        if (!await ask(`"${sp.name}" kayıtlı dağıtımı silinecek.`, 'Sil')) break;
+        snap();
+        S.savedPlans = (S.savedPlans || []).filter(x => x.id !== id);
+        commit();
+        toast('Kayıtlı dağıtım silindi.');
+      } break;
+      case 'resetCustomTimes': {
+        snap();
+        S.school.customTimes = [];
+        commit();
+        toast('Ders saatleri otomatik hesaplamaya sıfırlandı.');
+      } break;
+      case 'waSingle': {
+        const kind = a.dataset.kind === 't' ? 't' : 'c';
+        const mode = await resolveExportMode(kind === 't' ? 'Öğretmen WhatsApp görseli (PNG)' : 'Sınıf WhatsApp görseli (PNG)');
+        if (!mode) break;
+        const list = kind === 't' ? S.teachers : S.classes;
+        const uiKey = kind === 't' ? 'waTch' : 'waCls';
+        const targetId = (S.ui[uiKey] && list.some(x => x.id === S.ui[uiKey])) ? S.ui[uiKey] : (list[0] ? list[0].id : '');
+        if (!targetId) { toast(kind === 't' ? 'Öğretmen bulunamadı.' : 'Sınıf bulunamadı.'); break; }
+        const cv = EP.pngCanvas(S, kind, targetId, { watermark: mode !== 'clean' });
+        if (!cv) break;
+        const nm = (list.find(x => x.id === targetId) || {}).name || 'program';
+        showImg(cv, `${kind === 't' ? 'Ogretmen' : 'Sinif'}-${nm}`);
+      } break;
+      case 'waBatch': {
+        const kind = a.dataset.kind === 't' ? 't' : 'c';
+        const list = kind === 't' ? S.teachers : S.classes;
+        if (!list.length) { toast(kind === 't' ? 'Öğretmen bulunamadı.' : 'Sınıf bulunamadı.'); break; }
+        const mode = await resolveExportMode(kind === 't' ? `Tüm öğretmenler (${list.length}) WhatsApp görselleri` : `Tüm sınıflar (${list.length}) WhatsApp görselleri`);
+        if (!mode) break;
+        toast(`${list.length} adet WhatsApp PNG görseli indiriliyor…`);
+        let cnt = 0;
+        for (const ent of list) {
+          const cv = EP.pngCanvas(S, kind, ent.id, { watermark: mode !== 'clean' });
+          if (!cv) continue;
+          const link = document.createElement('a');
+          const safe = String(ent.name || 'program').replace(/[\\/:*?"<>|]+/g, '-').trim();
+          link.href = cv.toDataURL('image/png');
+          link.download = `${kind === 't' ? 'Ogretmen' : 'Sinif'}-${safe}.png`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          cnt++;
+          await new Promise(r => setTimeout(r, 120));
+        }
+        toast(`${cnt} adet ${kind === 't' ? 'öğretmen' : 'sınıf'} WhatsApp görseli (.png) indirildi.`);
+      } break;
       case 'exPng2': {
         const mode = await resolveExportMode('WhatsApp PNG görseli oluşturma');
         if (!mode) break;
@@ -3198,6 +3438,21 @@
         } catch (_) { toast('Geçerli bir Çarşaf (v2) veya DersMatrix Ultimate (v3) JSON dosyası değil.'); }
       };
       fr.readAsText(el.files[0]); return;
+    }
+    if (el.dataset.ctime) {
+      const [pStr, field] = el.dataset.ctime.split('|');
+      const p = +pStr;
+      if (Number.isInteger(p) && p >= 0) {
+        snap();
+        const base = EP.autoTimes(S);
+        S.school.customTimes = Array.isArray(S.school.customTimes) ? S.school.customTimes.slice() : [];
+        for (let i = 0; i < base.length; i++) {
+          if (!S.school.customTimes[i]) S.school.customTimes[i] = { start: base[i].start, end: base[i].end };
+        }
+        S.school.customTimes[p][field] = el.value;
+        commit();
+      }
+      return;
     }
     if (el.dataset.k) {
       snap(); let v = el.value;
@@ -3504,15 +3759,26 @@
     render();
   });
 
-  /* Çift tık ile anında ders kilitleme / kilit açma */
+  /* Çift tık: gün başlığı -> günü kapat/aç; boş hücre -> saati kapat/aç; dolu ders -> kilitle/kilidi aç */
   document.addEventListener('dblclick', e => {
-    const td = e.target.closest && e.target.closest('td[data-act="cell"][data-id]');
-    if (!td || running || bulkMode) return;
-    const bid = td.dataset.id;
-    if (!bid || !S.place[bid]) return;
+    if (running) return;
+    const thDay = e.target.closest && e.target.closest('th[data-daytoggle="1"]');
+    if (thDay) {
+      e.preventDefault();
+      if (cellClickTimer) { clearTimeout(cellClickTimer); cellClickTimer = null; }
+      toggleEntityDayQuick(thDay.dataset.kind, thDay.dataset.ent, +thDay.dataset.d);
+      return;
+    }
+    const td = e.target.closest && e.target.closest('td[data-act="cell"]');
+    if (!td || bulkMode) return;
+    const bid = td.dataset.id || '';
     e.preventDefault();
     if (cellClickTimer) { clearTimeout(cellClickTimer); cellClickTimer = null; }
-    toggleCellLockQuick(bid);
+    if (bid && S.place[bid]) {
+      toggleCellLockQuick(bid);
+    } else if (!bid && td.dataset.key && td.dataset.ent) {
+      toggleEntitySlotQuick(td.dataset.kind, td.dataset.ent, td.dataset.key);
+    }
   });
 
   document.addEventListener('contextmenu', e => {

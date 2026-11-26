@@ -64,14 +64,14 @@
     return {
       v: 3,
       schemaVersion: 3,
-      appVersion: '2.3.0',
+      appVersion: '2.4.0',
       id: uid(),
       revision: 1,
       updatedAt: new Date().toISOString(),
       school: {
-        name: 'Yeni Okul', year: '2026-2027', mudur: '', myard: [], donem: '1. Dönem',
+        name: 'Yeni Okul', year: '2026-2027', mudur: '', mudurYardimcisi: '', myard: [], donem: '1. Dönem',
         donemBas: '', donemBit: '', type: 'ilk', educationMode: 'full_day',
-        D: 5, P: 7, start: '08:30', len: 40, brk: 10, lunchAfter: 5, lunchLen: 40
+        D: 5, P: 7, start: '08:30', len: 40, brk: 10, lunchAfter: 5, lunchLen: 40, customTimes: []
       },
       buildings: [{ id: bId, name: 'Ana Bina', code: 'B1', transitionPeriods: {} }],
       rooms: [{ id: uid(), name: 'Derslik 101', type: 'classroom', buildingId: bId, capacity: 32, closed: [] }],
@@ -83,12 +83,13 @@
       blk: {},
       blkMode: 'fixed',
       report: { paper: 'A4' },
-      duty: { places: ['Bahçe', 'Koridor'], admin: {}, strategy: 'min_lessons', avoidZeroDay: true, reassignClosedDay: true, closedDates: [], month: '', monthlyMode: 'rotate', monthly: {} },
+      duty: { places: ['Bahçe', 'Koridor'], admin: {}, strategy: 'max_lessons', avoidZeroDay: true, reassignClosedDay: true, closedDates: [], month: '', monthlyMode: 'rotate', monthly: {} },
       rules: [
         { id: uid(), type: 'diff', on: true, level: 'HARD', weight: 1000000 },
         { id: uid(), type: 'lunch', on: true, level: 'HIGH', weight: 100 }
       ],
       place: {},
+      savedPlans: [],
       last: null,
       solutions: [],
       ui: {
@@ -194,6 +195,7 @@
       name: sc.name || 'Yeni Okul',
       year: sc.year || '2026-2027',
       mudur: sc.principal || sc.mudur || '',
+      mudurYardimcisi: sc.mudurYardimcisi || sc.vicePrincipal || '',
       myard: Array.isArray(sc.vicePrincipals) ? sc.vicePrincipals.map(x => typeof x === 'string' ? { id: uid(), name: x, gorev: '' } : Object.assign({ id: uid(), name: '', gorev: '' }, x)) : (sc.myard || []),
       donem: sc.term || sc.donem || '1. Dönem',
       donemBas: sc.termStart || sc.donemBas || '',
@@ -206,7 +208,8 @@
       len: Number(bell.lessonMinutes || sc.len || 40),
       brk: Number(bell.breakMinutes || sc.brk || 10),
       lunchAfter: Number(bell.lunchAfterPeriod ?? sc.lunchAfter ?? 5),
-      lunchLen: Number(bell.lunchMinutes || sc.lunchLen || 40)
+      lunchLen: Number(bell.lunchMinutes || sc.lunchLen || 40),
+      customTimes: Array.isArray(sc.customTimes) ? sc.customTimes : (Array.isArray(sc.customPeriods) ? sc.customPeriods : [])
     };
     if (Array.isArray(v3.buildings) && v3.buildings.length) base.buildings = v3.buildings;
     if (Array.isArray(v3.rooms) && v3.rooms.length) base.rooms = v3.rooms;
@@ -266,7 +269,10 @@
     o = Object.assign(b, o);
     o.school = Object.assign(b.school, o.school || {});
     if (!Array.isArray(o.school.myard)) o.school.myard = [];
+    if (!Array.isArray(o.school.customTimes)) o.school.customTimes = [];
+    if (o.school.mudurYardimcisi == null) o.school.mudurYardimcisi = '';
     if (!o.school.mudur && o.report && o.report.mudur) o.school.mudur = o.report.mudur;
+    if (!Array.isArray(o.savedPlans)) o.savedPlans = [];
     if (!Array.isArray(o.custom)) o.custom = [];
     if (!Array.isArray(o.buildings) || !o.buildings.length) o.buildings = b.buildings;
     if (!Array.isArray(o.rooms)) o.rooms = b.rooms;
@@ -381,7 +387,9 @@
         daysPerWeek: D,
         periodsPerDay: P,
         principal: S.school.mudur || '',
+        mudurYardimcisi: S.school.mudurYardimcisi || '',
         vicePrincipals: (S.school.myard || []).map(m => ({ id: m.id, name: m.name, gorev: m.gorev || '' })),
+        customTimes: Array.isArray(S.school.customTimes) ? S.school.customTimes : [],
         bellSchedule: {
           full: {
             startTime: S.school.start || '08:30',
@@ -520,16 +528,27 @@
   function syncAll(S, f) { let n = 0; for (const c of S.cards) if (!f || f(c)) if (syncPattern(S, c)) n++; return n; }
 
   /* ---------- Model, Yerleşim ve Ön Kontrol ---------- */
-  function times(S) {
+  function autoTimes(S) {
     const s = S.school, x = (s.start || '08:30').split(':').map(Number);
     let t = (x[0] || 8) * 60 + (x[1] || 0);
     const f = v => String(Math.floor(v / 60) % 24).padStart(2, '0') + ':' + String(v % 60).padStart(2, '0'), out = [];
     for (let p = 0; p < +s.P; p++) {
       const a = t, b = t + (+s.len || 40);
-      out.push(f(a) + '–' + f(b));
+      out.push({ start: f(a), end: f(b) });
       t = b + ((p + 1) === (+s.lunchAfter) ? (+s.lunchLen || 40) : (+s.brk || 10));
     }
     return out;
+  }
+
+  function times(S) {
+    const base = autoTimes(S);
+    const ct = Array.isArray(S.school && S.school.customTimes) ? S.school.customTimes : [];
+    return base.map((b, p) => {
+      const c = ct[p];
+      const st = (c && c.start) ? c.start : b.start;
+      const en = (c && c.end) ? c.end : b.end;
+      return st + '–' + en;
+    });
   }
 
   const cardMap = S => new Map(S.cards.map(c => [c.id, c]));
@@ -1083,7 +1102,7 @@
     blank, demo, v3ToState, migrateState, stateToV3Project, applyV3SolutionToState, sanitizeExportProject,
     typeOf, gIdx, zFor, poolFor, secLimit, targetOf, findSubj, ensureSubj,
     SN, SS, SB, nameOf, blkKey, blkCfgN, blkCfg, effCfg, effPats, dropPlace, syncPattern, syncAll,
-    times, cardMap, tName, tShort, cName, loads, openOf, classHours, classOpen,
+    autoTimes, times, cardMap, tName, tShort, cName, loads, openOf, classHours, classOpen,
     buildModel, placedCore, occ, SCOPE, modeFor, tMode, tcRulesFor, tcHours, tcViolation, tcAll,
     rehberOf, clsStat, pickTeacher, assignCards, setRehber, rehberAuto, findClassSubjCard, newCard, applyTemplate, closeExtra,
     lockedIds, lockedInClosed, lockImpact, impactFor, whyText, whyAt, precheck, quality, editInfoFor

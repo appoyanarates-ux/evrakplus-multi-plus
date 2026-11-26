@@ -9,7 +9,7 @@ import { SqliteProjectStore } from './sqlite-store.js';
 import { resolveEmbeddedPaths } from './engine-paths.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const APP_VERSION = '2.3.0';
+export const APP_VERSION = '2.4.0';
 export const APP_NAME = 'DersMatrix Ultimate';
 
 async function loadMultiSolver() {
@@ -370,20 +370,52 @@ async function printHtmlDirect(opts) {
   if (!opts || typeof opts.html !== 'string' || !opts.html.trim()) {
     throw new Error('Yazdırılacak içerik boş.');
   }
+  const tmpHtml = path.join(os.tmpdir(), `dersmatrix-print-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.html`);
+  fs.writeFileSync(tmpHtml, opts.html, 'utf8');
   let win = null;
-  let tmpHtml = '';
   try {
-    const rendered = await renderHiddenHtmlWindow(opts.html, Boolean(opts.landscape));
-    win = rendered.win;
-    tmpHtml = rendered.tmpHtml;
-    const ok = await new Promise(resolve => {
-      win.webContents.print({
-        silent: false,
-        printBackground: true,
-        landscape: Boolean(opts.landscape)
-      }, (success) => resolve(Boolean(success)));
+    win = new BrowserWindow({
+      show: true,
+      parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined,
+      title: 'Yazdır — DersMatrix Ultimate',
+      icon: resolveAppIcon(),
+      width: opts.landscape ? 1120 : 860,
+      height: 760,
+      autoHideMenuBar: true,
+      webPreferences: {
+        sandbox: true,
+        contextIsolation: true,
+        nodeIntegration: false,
+        webSecurity: true,
+        javascript: false
+      }
     });
-    return { ok };
+    win.removeMenu();
+    await win.loadFile(tmpHtml);
+    await new Promise(r => setTimeout(r, 250));
+    if (!win.isDestroyed()) win.focus();
+
+    const result = await new Promise(resolve => {
+      let done = false;
+      const finish = payload => {
+        if (done) return;
+        done = true;
+        resolve(payload);
+      };
+      win.once('closed', () => finish({ ok: false, canceled: true }));
+      try {
+        win.webContents.print({
+          silent: false,
+          printBackground: true,
+          landscape: Boolean(opts.landscape)
+        }, (success, failureReason) => {
+          finish({ ok: Boolean(success), error: failureReason || '' });
+        });
+      } catch (err) {
+        finish({ ok: false, error: err && err.message ? err.message : String(err) });
+      }
+    });
+    return result;
   } finally {
     try { if (win && !win.isDestroyed()) win.destroy(); } catch {}
     try { if (tmpHtml && fs.existsSync(tmpHtml)) fs.unlinkSync(tmpHtml); } catch {}
