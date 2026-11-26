@@ -1,5 +1,28 @@
 # DersMatrix Ultimate (by EvrakPlus) — Değişiklik Geçmişi (CHANGELOG)
 
+## [2.5.0] - 2026-11-26
+
+### Yenilikler ve Büyük İyileştirmeler
+- **%39 Daha Küçük Kurulum Paketi (`398.4 MB → ~243 MB`, 6/6 Gömülü Motor Korunarak)**:
+  - `jlink` özel minimal Java 21 Runtime (`328.5 MB → 48.5 MB`) ve gömülü Python önbellek/test temizliğiyle çalışma ortamı yarıya yakın küçültüldü; **OR-Tools, Timefold, Choco, MiniZinc, SCIP ve HiGHS** motorlarının tamamı çevrimdışı gömülü olarak korundu ve doğrulandı.
+  - Diferansiyel (delta) güncelleme için `.blockmap` metadata algılama ve dağıtım desteği eklendi.
+- **Toplu WhatsApp Görselleri — Masaüstünde Tek Klasöre / Web'de Tek ZIP'e Kaydetme**:
+  - `Raporlar ve Çıktılar` ekranında *"Tüm Sınıflar"* veya *"Tüm Öğretmenler"* toplu WhatsApp PNG indirmede masaüstünde hedef klasör seçilip tüm PNG'ler tek seferde o klasöre kaydedilir ve klasör açılır; web sürümünde ise UTF-8 Türkçe dosya adlarını koruyan tek bir `.zip` arşivi indirilir.
+- **Excel / e-Okul'dan Toplu Öğretmen & Şube İçe Aktarım Sihirbazı**:
+  - `Öğretmenler` ve `Sınıflar ve Şubeler` sayfalarına kopyala-yapıştır veya `.csv`/`.txt` dosya yüklemeli toplu içe aktarım, örnek Excel/CSV şablonu indirme, otomatik Türkçe branş/unvan/Hazırlık sınıfı (`Hz/A`) eşleştirme ve mükerrer kayıt kontrolü eklendi.
+- **SQLite Kayıtlı Ders Dağıtımları & Yan Yana Karşılaştırma**:
+  - Kayıtlı dağıtımlar masaüstünde `localStorage` sınırına takılmadan yerel SQLite veritabanına (`saved_plans`) saklanır.
+  - **Karşılaştır** penceresiyle herhangi iki dağıtım yerleşim oranı, öğretmen ara boşluğu (pencere), boş gün sayısı, sınıf gün dengesi ve genel kalite puanı açısından yan yana kıyaslanabilir.
+- **Otomatik Ek Ders Ön Hesap Özeti (`Raporlar ve Çıktılar → Ek Ders Özeti`)**:
+  - Öğretmenlerin ders saati, maaş karşılığı, gündüz ek dersi, 10 saate 1 hazırlık ve planlama, sınıf rehberliği/sosyal kulüp (+2) ve okul nöbeti (+3) hesaplarıyla otomatik haftalık/aylık Ek Ders ön raporu ve PDF/Yazdır/Word çıktısı eklendi.
+- **MEB Resmî Tatil & Ara Tatil Otomatik İşleme (Aylık Nöbet Takvimi)**:
+  - `Okul Nöbeti → Aylık Nöbet` sekmesine resmî bayramları ve 2025/2026–2026/2027 MEB ara/yarıyıl tatillerini tek tıkla takvimde kapatan **MEB Resmî Tatillerini İşle** düğmesi eklendi.
+- **Lise & Büyük Okul Desteği (İki Öğretmenli Dersler, Ortak Seçmeli Blokları & İkili Öğretim Zil Saatleri)**:
+  - `Ders Görevlendirmeleri`'nde ders kartlarına **2. Eş Öğretmen** (bölünmüş/atölye dersi) ve **Ortak Blok Grubu** (`parallelGroupId`) desteği eklendi; yükler ve program görünümleri her iki öğretmene otomatik yansır.
+  - `Okul Ayarları`'nda **İkili Öğretim (Sabahçı / Öğlenci)** seçildiğinde devre bazlı ayrı zil saatleri (`Sabahçı İlk Ders`, `Öğlenci İlk Ders`) programlara ve çıktılara otomatik yansır.
+- **Gerçek Chromium/Electron E2E Test Kalkanı & Tek Komut Otomasyon**:
+  - 7 temel kullanıcı akışını gerçek Chromium penceresinde otomatik doğrulayan E2E test paketi (`tests/e2e/ui-flows.test.js`) ve tek komutlu web senkronizasyon/sürüm scripti (`scripts/sync-and-bump.ps1`) eklendi.
+
 ## [2.4.0] - 2026-11-26
 
 ### Yenilikler ve Düzeltmeler
