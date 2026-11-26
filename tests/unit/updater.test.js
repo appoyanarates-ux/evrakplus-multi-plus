@@ -8,6 +8,7 @@ import {
   isTrustedHttpsUrl,
   computeFileSha256,
   verifyFileSha256,
+  detectUpdateStrategy,
   checkForUpdates,
   applyUpdateWithRollback
 } from '../../apps/desktop-electron/src/updater.js';
@@ -38,6 +39,17 @@ test('SemVer karşılaştırması ve güvenilir HTTPS kaynak zorunluluğu', asyn
   });
   assert.equal(mockRes.updateAvailable, true);
   assert.equal(mockRes.latestVersion, '1.1.0');
+  assert.equal(mockRes.strategy.supportsDelta, false);
+
+  const deltaStrat = detectUpdateStrategy([
+    { name: 'DersMatrix-Ultimate-2.5.0-Setup.exe', size: 250000000 },
+    { name: 'DersMatrix-Ultimate-2.5.0-Setup.exe.blockmap', size: 220000 },
+    { name: 'latest.yml', size: 420 },
+    { name: 'SHA256SUMS.txt', size: 101 }
+  ]);
+  assert.equal(deltaStrat.supportsDelta, true);
+  assert.ok(deltaStrat.blockmapAsset);
+  assert.ok(deltaStrat.latestYmlAsset);
 });
 
 test('SHA-256 doğrulama, kullanıcı onayı zorunluluğu ve başarısız güncellemede güvenli rollback', async () => {

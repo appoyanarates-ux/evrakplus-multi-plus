@@ -2,8 +2,23 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const DEFAULT_RELEASE_API = 'https://api.github.com/repos/evrakplus/evrakplus-ders-dagitim-multi-plus/releases/latest';
+export const DEFAULT_RELEASE_API = 'https://api.github.com/repos/appoyanarates-ux/evrakplus-multi-plus/releases/latest';
 const TRUSTED_UPDATE_HOSTS = new Set(['api.github.com', 'github.com', 'objects.githubusercontent.com', 'www.evrakplus.com']);
+
+export function detectUpdateStrategy(assets = []) {
+  const list = Array.isArray(assets) ? assets : [];
+  const setupAsset = list.find(a => /setup.*\.exe$/i.test(a.name || '')) || null;
+  const blockmapAsset = list.find(a => /\.exe\.blockmap$/i.test(a.name || '')) || null;
+  const latestYmlAsset = list.find(a => /^latest\.yml$/i.test(a.name || '')) || null;
+  const shaAsset = list.find(a => /sha256/i.test(a.name || '')) || null;
+  return {
+    supportsDelta: Boolean(setupAsset && blockmapAsset),
+    setupAsset,
+    blockmapAsset,
+    latestYmlAsset,
+    shaAsset
+  };
+}
 
 export function isTrustedHttpsUrl(rawUrl) {
   try {
@@ -66,6 +81,11 @@ export async function checkForUpdates({
   const rel = await resp.json();
   const latestVersion = String(rel.tag_name || '').replace(/^v/i, '');
   const updateAvailable = parseSemver(latestVersion) ? compareSemver(latestVersion, currentVersion) > 0 : false;
+  const assets = (rel.assets || []).map(a => ({
+    name: a.name,
+    size: a.size,
+    downloadUrl: a.browser_download_url
+  }));
   return {
     ok: true,
     currentVersion,
@@ -73,11 +93,8 @@ export async function checkForUpdates({
     updateAvailable,
     releaseNotes: rel.body || '',
     publishedAt: rel.published_at || null,
-    assets: (rel.assets || []).map(a => ({
-      name: a.name,
-      size: a.size,
-      downloadUrl: a.browser_download_url
-    }))
+    assets,
+    strategy: detectUpdateStrategy(assets)
   };
 }
 

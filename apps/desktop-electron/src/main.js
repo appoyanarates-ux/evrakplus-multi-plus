@@ -200,6 +200,7 @@ async function checkLatestRelease() {
     const latestVersion = String(rel.tag_name || '').replace(/^v/i, '') || APP_VERSION;
     const assets = Array.isArray(rel.assets) ? rel.assets : [];
     const setupAsset = assets.find(a => /-Setup\.exe$/i.test(a.name || ''));
+    const blockmapAsset = assets.find(a => /-Setup\.exe\.blockmap$/i.test(a.name || ''));
     const sumAsset = assets.find(a => /^SHA256SUMS\.txt$/i.test(a.name || ''));
     const updateAvailable = compareSemver(latestVersion, APP_VERSION) > 0 && Boolean(setupAsset);
 
@@ -212,6 +213,8 @@ async function checkLatestRelease() {
       assetName: setupAsset ? setupAsset.name : '',
       assetSize: setupAsset ? setupAsset.size : 0,
       downloadUrl: setupAsset ? setupAsset.browser_download_url : '',
+      blockmapUrl: blockmapAsset ? blockmapAsset.browser_download_url : '',
+      supportsDelta: Boolean(setupAsset && blockmapAsset),
       sha256Url: sumAsset ? sumAsset.browser_download_url : ''
     };
     latestUpdateCache = info;
