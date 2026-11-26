@@ -129,13 +129,14 @@ app.whenReady().then(async () => {
       await wait(100);
       out.push('Flow 5 OK: Save plan snapshot + side-by-side comparison modal');
 
-      // 6. Okul Nöbeti -> Haftalık otomatik dağıtım + Aylık takvim gün kapat/aç
+      // 6. Okul Nöbeti -> Haftalık otomatik dağıtım + Aylık takvim gün kapat/aç + MEB tatilleri
       document.querySelector('a[data-step="duty"]').click();
       await wait(150);
       document.querySelector('[data-act="dutyAuto"]').click();
       await wait(200);
       document.querySelector('[data-act="dutyTab"][data-v="monthly"]').click();
       await wait(200);
+      assert(document.querySelector('[data-act="applyMebHolidays"]'), 'MEB Resmî Tatillerini İşle butonu bulunmalı');
       const calBtn = document.querySelector('[data-act="toggleDutyDate"]');
       assert(calBtn, 'Aylık takvim günü bulunmalı');
       const iso = calBtn.dataset.id;
@@ -144,10 +145,17 @@ app.whenReady().then(async () => {
       await wait(150);
       const calAfter = document.querySelector('[data-act="toggleDutyDate"][data-id="' + iso + '"]');
       assert(calAfter && calAfter.classList.contains('closed') === !wasClosed, 'Aylık takvim günü açılıp kapanmalı');
-      out.push('Flow 6 OK: Weekly duty auto + Monthly calendar day toggle');
+      out.push('Flow 6 OK: Weekly duty auto + Monthly calendar day toggle + MEB holidays');
 
-      // 7. Gerçek Canvas WhatsApp PNG + PKZIP doğrulaması
+      // 7. Gerçek Canvas WhatsApp PNG + Ek Ders Özeti sekmesi doğrulaması
       document.querySelector('a[data-step="reports"]').click();
+      await wait(150);
+      const ekTab = document.querySelector('[data-act="rtab"][data-v="ek"]');
+      assert(ekTab, 'Ek Ders Özeti sekmesi bulunmalı');
+      ekTab.click();
+      await wait(150);
+      assert(document.querySelector('#view').innerHTML.includes('EK DERS ÖN HESAP ÖZETİ'), 'Ek Ders belgesi render edilmeli');
+      document.querySelector('[data-act="rtab"][data-v="cp"]').click();
       await wait(150);
       const firstClsId = document.querySelector('select[data-ui="waCls"] option')?.value;
       const firstTchId = document.querySelector('select[data-ui="waTch"] option')?.value;

@@ -458,3 +458,70 @@ test('Aşama 1: PKZIP (UTF-8), kayıtlı dağıtım karşılaştırma ve Excel/e
   assert.equal(parsedC[2].shift, 'morning');
   assert.equal(parsedC[2].rehberId, 't1');
 });
+
+test('Aşama 3: Ek Ders ön özeti, MEB resmî tatilleri, iki öğretmenli/ortak blok & ikili öğretim zil saatleri', () => {
+  const EP = loadUiNamespace();
+  const S = EP.blank();
+  S.school.D = 5;
+  S.school.P = 6;
+  S.school.educationMode = 'dual_shift';
+  S.school.morningStart = '07:30';
+  S.school.afternoonStart = '13:15';
+  S.school.mudur = 'Hakan Öz';
+  S.school.mudurYardimcisi = 'Elif Tan';
+  S.classes = [
+    { id: 'c1', name: '9/A', grade: 9, shift: 'morning', closed: [], rehber: 't1' },
+    { id: 'c2', name: '9/B', grade: 9, shift: 'afternoon', closed: [], rehber: '' }
+  ];
+  S.teachers = [
+    { id: 't1', name: 'Ahmet Kültür', branch: 'Matematik', role: 'ogretmen', dutyExempt: false, dutyD: '1', dutyP: 'Bahçe', kulup: 'Matematik Kulübü', av: {} },
+    { id: 't2', name: 'Mehmet Atölye', branch: 'Meslek / Alan Dersleri', role: 'ogretmen', dutyExempt: false, dutyD: '', dutyP: '', kulup: '', av: {} }
+  ];
+  S.cards = [
+    // t1: 24 saat (15 maaş + 9 gündüz ek ders + 2 haz.pl + 2 reh/klp + 3 nöbet = 16 haftalık, 64 aylık)
+    { id: 'cd1', classId: 'c1', subj: 'MAT', hours: 20, pattern: '2+2+2+2+2+2+2+2+2+2', teacherId: 't1', kind: 'zorunlu' },
+    // İki öğretmenli bölünmüş ders (t1 + t2 aynı saatte, ortak blok grubu '9-Sec-A')
+    { id: 'cd2', classId: 'c2', subj: 'FEN', hours: 4, pattern: '2+2', teacherId: 't1', coTeacherId: 't2', syncGroup: '9-Sec-A', kind: 'secmeli' }
+  ];
+  S.place = { 'cd2:0': { d: 0, p: 0, lock: false } };
+
+  // 1. İki öğretmenli ders yükü ve çakışma/program görünümü
+  const L = EP.loads(S);
+  assert.equal(L.t1, 24);
+  assert.equal(L.t2, 4, '2. Eş öğretmenin ders yükü otomatik sayılmalı');
+  const o = EP.occ(S);
+  assert.ok(o.tG.t1['0-0'] && o.tG.t2['0-0'], 'Bölünmüş ders her iki öğretmenin programında görünmeli');
+
+  // 2. v3 şema dönüşümü coTeacherIds & parallelGroupId & dual_shift bellSchedule doğrulaması
+  const v3 = EP.stateToV3Project(S);
+  const a2 = v3.assignments.find(a => a.id === 'cd2');
+  assert.deepEqual([...a2.coTeacherIds], ['t2']);
+  assert.equal(a2.parallelGroupId, '9-Sec-A');
+  assert.equal(v3.school.bellSchedule.morning.startTime, '07:30');
+  assert.equal(v3.school.bellSchedule.afternoon.startTime, '13:15');
+  assert.equal(validateProjectSchema(v3).valid, true);
+  assert.equal(EP.times(S, 'morning')[0], '07:30–08:10');
+  assert.equal(EP.times(S, 'afternoon')[0], '13:15–13:55');
+
+  // 3. Ek Ders ön hesap özeti & rapor belgesi
+  const ek = EP.computeEkDers(S);
+  const r1 = ek.rows.find(r => r.teacher.id === 't1');
+  assert.equal(r1.dersSaati, 24);
+  assert.equal(r1.maasKarsiligi, 15);
+  assert.equal(r1.gunduzEkDers, 9);
+  assert.equal(r1.hazirlikPlanlama, 2);
+  assert.equal(r1.rehberlikKulup, 2);
+  assert.equal(r1.nobetEkDers, 3);
+  assert.equal(r1.haftalikToplam, 16);
+  assert.equal(r1.aylikTahmini, 64);
+  const ekHtml = EP.docEkDers(S);
+  assert.ok(ekHtml.includes('EK DERS ÖN HESAP ÖZETİ'));
+  assert.ok(ekHtml.includes('Hakan Öz') && ekHtml.includes('Elif Tan'));
+
+  // 4. MEB Resmî Tatil & Ara Tatil otomatik işleme (2026-04 -> 23 Nisan, 2026-11 -> 1. Dönem Ara Tatili)
+  const apr = EP.applyMebHolidaysForMonth(S, '2026-04');
+  assert.ok(apr.items.some(x => x.date === '2026-04-23'), '23 Nisan otomatik tespit edilmeli');
+  assert.ok(S.duty.closedDates.includes('2026-04-23'), '23 Nisan kapalı günlere eklenmeli');
+  const nov = EP.applyMebHolidaysForMonth(S, '2026-11');
+  assert.equal(nov.total, 5, '2026 Kasım 1. Dönem Ara Tatili 5 gün olmalı');
+});

@@ -195,7 +195,7 @@
     $('#mX').addEventListener('click', () => { M.innerHTML = ''; });
   }
 
-  const APP_VER = (bridge && bridge.appVersion) || '2.4.0';
+  const APP_VER = (bridge && bridge.appVersion) || '2.5.0-beta.1';
   let updateInfo = null;
   let updateProgress = null;
   const isMember = () => Boolean(authUser && (authUser.loggedIn || authUser.entitlementValid));
@@ -432,15 +432,20 @@
   }
 
   function cardRow(c, showClass) {
+    const coOpts = `<option value="">— Yok (Tek öğretmen) —</option>` + S.teachers.filter(t => t.id !== c.teacherId).map(t => `<option value="${t.id}" ${c.coTeacherId === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('');
     return `<tr>${showClass ? `<td>${esc(cName(c.classId))}</td>` : ''}
-      <td><span class="tag ${colorOf(c.subj)}">${esc(SS(c.subj))}</span> ${esc(SN(c.subj))}${showClass ? `<br><small class="muted">${c.kind === 'secmeli' ? 'Seçmeli' : c.kind === 'ek' ? 'Ek / branş dışı' : 'Zorunlu'}</small>` : ''}</td>
+      <td><span class="tag ${colorOf(c.subj)}">${esc(SS(c.subj))}</span> ${esc(SN(c.subj))}${showClass ? `<br><small class="muted">${c.kind === 'secmeli' ? 'Seçmeli' : c.kind === 'ek' ? 'Ek / branş dışı' : 'Zorunlu'}</small>` : ''}${c.syncGroup ? `<br><span class="tag" style="background:var(--okBg);color:var(--ok)">Ortak: ${esc(c.syncGroup)}</span>` : ''}</td>
       <td class="n"><input type="number" min="1" max="12" data-card="${c.id}" data-f="hours" value="${c.hours}" style="width:66px" aria-label="Haftalık saat"></td>
       <td>${blkSelect(c)}</td>
-      <td><select data-card="${c.id}" data-f="teacherId" style="max-width:265px" aria-label="Öğretmen">${tOptions(c)}</select><div style="margin-top:4px">${modeTag(c)}</div></td>
-      <td><select data-card="${c.id}" data-f="roomId" style="max-width:150px" aria-label="Derslik"><option value="">Varsayılan</option>${(S.rooms || []).map(r => `<option value="${r.id}" ${c.roomId === r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select></td>
+      <td><select data-card="${c.id}" data-f="teacherId" style="max-width:245px" aria-label="Öğretmen">${tOptions(c)}</select><div style="margin-top:4px">${modeTag(c)}</div></td>
+      <td>
+        <select data-card="${c.id}" data-f="coTeacherId" style="max-width:170px;margin-bottom:4px" title="Bölünmüş / Atölye dersi için 2. eş öğretmen" aria-label="2. Eş öğretmen">${coOpts}</select>
+        <input data-card="${c.id}" data-f="syncGroup" value="${esc(c.syncGroup || '')}" placeholder="Ortak grup (ör. 11-Sec-A)" title="Aynı grup adını taşıyan farklı şubelerin seçmeli dersleri aynı saatte eş zamanlı yerleşir" style="width:170px;min-height:30px;padding:3px 7px;font-size:12px">
+      </td>
+      <td><select data-card="${c.id}" data-f="roomId" style="max-width:135px" aria-label="Derslik"><option value="">Varsayılan</option>${(S.rooms || []).map(r => `<option value="${r.id}" ${c.roomId === r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select></td>
       <td style="text-align:right"><button class="btn sm ghost" data-act="delCard" data-id="${c.id}">Sil</button></td></tr>`;
   }
-  const TH_CARD = cls => `<thead><tr>${cls ? '<th>Sınıf</th>' : ''}<th>Ders</th><th class="n">Saat</th><th>Blok</th><th>Öğretmen</th><th>Derslik</th><th></th></tr></thead>`;
+  const TH_CARD = cls => `<thead><tr>${cls ? '<th>Sınıf</th>' : ''}<th>Ders</th><th class="n">Saat</th><th>Blok</th><th>Öğretmen</th><th>2. Eş Öğretmen / Ortak Blok</th><th>Derslik</th><th></th></tr></thead>`;
 
   /* =========================================================================
    * 18 MENÜ GÖRÜNÜMLERİ
@@ -569,7 +574,11 @@
           <label class="f">Teneffüs (dk)<input type="number" data-k="school.brk" value="${s.brk}"></label>
           <label class="f">Öğle arası şu dersten sonra<input type="number" data-k="school.lunchAfter" value="${s.lunchAfter}"></label>
           <label class="f">Öğle arası (dk)<input type="number" data-k="school.lunchLen" value="${s.lunchLen}"></label>
+          ${s.educationMode === 'dual_shift' ? `
+          <label class="f">Sabahçı ilk ders<input type="time" data-k="school.morningStart" value="${esc(s.morningStart || '07:30')}"></label>
+          <label class="f">Öğlenci ilk ders<input type="time" data-k="school.afternoonStart" value="${esc(s.afternoonStart || '13:00')}"></label>` : ''}
         </div>
+        ${s.educationMode === 'dual_shift' ? `<div class="msg info" style="margin:10px 0 6px"><span class="ic">i</span><div><b>İkili Öğretim Aktif:</b> Sabahçı sınıflar <b>${esc(EP.times(S, 'morning')[0] || '')}</b>, Öğlenci sınıflar <b>${esc(EP.times(S, 'afternoon')[0] || '')}</b> saatinde başlar; sınıf çıktılarında her devrenin kendi zil saati görünür.</div><span></span></div>` : ''}
         <p class="small muted" style="margin:10px 0 6px">Her dersin başlangıç ve bitiş saatini aşağıdan tek tek özelleştirebilirsiniz (program şablonlarında, PDF/Yazdır belgelerinde ve WhatsApp görsellerinde birebir görünür):</p>
         <div style="max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:6px 8px">
           <table class="tbl"><thead><tr><th style="width:74px">Ders</th><th>Başlangıç</th><th>Bitiş</th></tr></thead><tbody>
@@ -1396,9 +1405,10 @@
     let cls = 'cell', inner = '', act = `data-act="cell" data-kind="${kind}" data-key="${key}" data-ent="${tag}"`;
     if (cell) {
       const cd = cell.card, t = S.teachers.find(z => z.id === cd.teacherId);
+      const t2 = cd.coTeacherId && cd.coTeacherId !== cd.teacherId ? S.teachers.find(z => z.id === cd.coTeacherId) : null;
       cls += ' ' + colorOf(cd.subj) + (cell.k ? ' cont' : '');
       if (cell.lock) cls += ' lk';
-      inner = `<span class="s">${esc(SS(cd.subj))}${cell.k ? '' : cell.len > 1 ? ' <small>×' + cell.len + '</small>' : ''}</span>${cell.k ? '' : `<span class="x">${kind === 'c' ? esc(tShort(t)) : esc(cName(cd.classId))}</span>`}${cell.lock && !cell.k ? LOCK_SVG : ''}`;
+      inner = `<span class="s">${esc(SS(cd.subj))}${cell.k ? '' : cell.len > 1 ? ' <small>×' + cell.len + '</small>' : ''}</span>${cell.k ? '' : `<span class="x">${kind === 'c' ? esc(tShort(t)) + (t2 ? '+' + esc(tShort(t2)) : '') : esc(cName(cd.classId))}</span>`}${cell.lock && !cell.k ? LOCK_SVG : ''}`;
       act += ` data-id="${cell.id}" data-k="${cell.k}"${!cell.lock && !running && !bulkMode ? ' draggable="true"' : ''}`;
       if (ed && sel === cell.id) cls += ' sel';
       if (ed && cell.k === 0 && ed.sw.has(cell.id)) cls += ' swp';
@@ -1410,7 +1420,7 @@
   }
 
   function grid1(o, kind, ent, ed) {
-    const D = +S.school.D, P = +S.school.P, tm = EP.times(S), G = (kind === 'c' ? o.cG : kind === 't' ? o.tG : o.rG)[ent.id] || {};
+    const D = +S.school.D, P = +S.school.P, tm = EP.times(S, kind === 'c' ? ent.shift : undefined), G = (kind === 'c' ? o.cG : kind === 't' ? o.tG : o.rG)[ent.id] || {};
     const rel = ed && (kind === 'c' ? S.classes[ed.m.blocks[ed.i].c]?.id === ent.id : kind === 't' ? (S.teachers[ed.m.blocks[ed.i].t] || {}).id === ent.id : false);
     const dayHead = (g, d) => {
       const allClosed = Array.from({ length: P }, (_, p) => slotClosed(kind, ent, d + '-' + p)).every(Boolean);
@@ -1787,6 +1797,7 @@
             <p class="small muted" style="margin-top:3px">Takvimde herhangi bir okul gününe tıklayarak o günü <b>kapatabilir</b> (resmî tatil, ara tatil, kar tatili vb.) veya tekrar <b>açabilirsiniz</b>. <b>Kesin kural:</b> Bir öğretmen bir takvim haftasında <b>en fazla 1 gün</b> nöbet tutar.</p>
           </div>
           <div class="row">
+            <button class="btn sm" data-act="applyMebHolidays" title="Bu aydaki resmî bayram ve MEB ara tatil günlerini otomatik kapalı işaretle">MEB Resmî Tatillerini İşle</button>
             ${closedRowsCount ? `<button class="btn sm ghost" data-act="clearMonthClosed">Bu Aydaki Kapalı Günleri Aç (${closedRowsCount})</button>` : ''}
             <button class="btn pri" data-act="exMonthlyPdf">Aylık PDF İndir (.pdf)</button>
             <button class="btn" data-act="exMonthlyPrint">Yazdır</button>
@@ -3401,6 +3412,14 @@
         commit();
         toast(`${id.split('-').reverse().join('.')} ${closedNow ? 'kapatıldı (tatil)' : 'tekrar açıldı'} ve aylık nöbet kurala göre yeniden dağıtıldı.`);
       } break;
+      case 'applyMebHolidays': {
+        const ym = (S.duty && S.duty.month) || EP.defaultYearMonth();
+        snap();
+        const res = EP.applyMebHolidaysForMonth(S, ym);
+        commit();
+        if (!res.total) toast(`${ym} ayında kayıtlı MEB resmî tatil veya ara tatil günü bulunmuyor.`);
+        else toast(`${res.total} MEB tatil günü kontrol edildi (${res.added} yeni gün takvimde kapatıldı).`);
+      } break;
       case 'clearMonthClosed': {
         const ym = (S.duty && S.duty.month) || EP.defaultYearMonth();
         snap();
@@ -3447,7 +3466,7 @@
         const wm = mode !== 'clean', tab = S.ui.rtab || 'cp';
         let body, title, isLandscape = false;
         if (isAll) {
-          body = ['cp', 'cs', 'tp', 'ts', 'nb'].map(t => EP.docsFor(S, t, '', { watermark: wm })).join('');
+          body = ['cp', 'cs', 'tp', 'ts', 'nb', 'ek'].map(t => EP.docsFor(S, t, '', { watermark: wm })).join('');
           title = S.school.name + ' tum belgeler';
         } else {
           const selId = tab === 'cp' ? S.ui.rselc : tab === 'tp' ? S.ui.rselt : '';

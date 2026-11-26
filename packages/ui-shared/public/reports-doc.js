@@ -134,8 +134,8 @@
     const r = rep(S);
     return `<div class="r">${EP.esc(r.mudur || '………………………')}<br>Okul Müdürü</div>`;
   }
-  function timeHead(S, P, sepFirst) {
-    const tm = EP.times(S);
+  function timeHead(S, P, sepFirst, shift) {
+    const tm = EP.times(S, shift);
     return Array.from({ length: P }, (_, p) => {
       const x = tm[p].split('–');
       return `<th${sepFirst && p === 0 ? ' class="sep"' : ''}><b>${p + 1}</b>${x[0]}<br>${x[1]}</th>`;
@@ -160,13 +160,19 @@
     const cards = S.cards.filter(x => x.classId === c.id).sort((a, b) => b.hours - a.hours);
     const tot = cards.reduce((a, x) => a + (+x.hours || 0), 0);
     const rh = S.teachers.find(t => t.id === EP.rehberOf(S, c));
-    const fC = cell => { const t = S.teachers.find(z => z.id === cell.card.teacherId); return `<b>${EP.esc(EP.SS(S, cell.card.subj))}</b><span>${EP.esc(EP.tShort(t))}</span>`; };
+    const fC = cell => {
+      const t = S.teachers.find(z => z.id === cell.card.teacherId);
+      const t2 = cell.card.coTeacherId && cell.card.coTeacherId !== cell.card.teacherId ? S.teachers.find(z => z.id === cell.card.coTeacherId) : null;
+      return `<b>${EP.esc(EP.SS(S, cell.card.subj))}</b><span>${EP.esc(EP.tShort(t))}${t2 ? '+' + EP.esc(EP.tShort(t2)) : ''}</span>`;
+    };
     return `<section class="doc portrait"><div class="ttl">${EP.esc(kurumAdi(S))}<br>Sınıflar Ders Programı</div>
       <div class="meta"><div><span>Sınıf/Grup</span><span>: ${EP.esc(c.name)}</span></div><div><span>Dönem</span><span>: ${EP.esc(donemText(S))}</span></div><div><span>Toplam Saat</span><span>: ${tot}</span></div><div><span>Sınıf Rehber Öğretmeni</span><span>: ${EP.esc(rh ? rh.name : '-')}</span></div></div>
-      <table class="g"><colgroup><col style="width:96px"></colgroup><thead><tr><th></th>${timeHead(S, P)}</tr></thead><tbody>${EP.GUN.slice(0, D).map((g, d) => `<tr><td class="day">${g}</td>${rowCells(G, d, P, fC)}</tr>`).join('')}</tbody></table>
+      <table class="g"><colgroup><col style="width:96px"></colgroup><thead><tr><th></th>${timeHead(S, P, false, c.shift)}</tr></thead><tbody>${EP.GUN.slice(0, D).map((g, d) => `<tr><td class="day">${g}</td>${rowCells(G, d, P, fC)}</tr>`).join('')}</tbody></table>
       <table class="l"><thead><tr><th style="width:26px">S</th><th style="width:62px">Ders</th><th>Ders Adı</th><th>Öğretmenler</th><th style="width:70px">Yerleşim</th><th style="width:36px">Saat</th></tr></thead><tbody>${cards.map((x, i) => {
         const t = S.teachers.find(z => z.id === x.teacherId);
-        return `<tr><td class="c">${i + 1}</td><td>${EP.esc(EP.SS(S, x.subj))}</td><td>${EP.esc(EP.SN(S, x.subj))}</td><td>${EP.esc(t ? upTR(t.name) : '-')}</td><td class="c">${EP.esc(x.pattern)}</td><td class="c">${x.hours}</td></tr>`;
+        const t2 = x.coTeacherId && x.coTeacherId !== x.teacherId ? S.teachers.find(z => z.id === x.coTeacherId) : null;
+        const tNames = t ? (upTR(t.name) + (t2 ? ' + ' + upTR(t2.name) : '')) : '-';
+        return `<tr><td class="c">${i + 1}</td><td>${EP.esc(EP.SS(S, x.subj))}</td><td>${EP.esc(EP.SN(S, x.subj))}</td><td>${EP.esc(tNames)}</td><td class="c">${EP.esc(x.pattern)}</td><td class="c">${x.hours}</td></tr>`;
       }).join('')}</tbody></table>
       <p class="note">Yukarıdaki program ${fmtD(r.gecerli)} ${wday(r.gecerli)} gününden itibaren geçerli olacaktır.</p><div class="sig">${sigL(S)}${sigR(S)}</div></section>`;
   }
@@ -557,6 +563,155 @@
     return removed;
   }
 
+  /* MEB Resmî Tatil & Ara Tatil Kataloğu (Yıllık Sabit + 2025/2026–2026/2027) */
+  const FIXED_TR_HOLIDAYS = {
+    '01-01': 'Yılbaşı',
+    '04-23': '23 Nisan Ulusal Egemenlik ve Çocuk Bayramı',
+    '05-01': 'Emek ve Dayanışma Günü',
+    '05-19': '19 Mayıs Atatürk’ü Anma, Gençlik ve Spor Bayramı',
+    '07-15': '15 Temmuz Demokrasi ve Millî Birlik Günü',
+    '08-30': '30 Ağustos Zafer Bayramı',
+    '10-29': '29 Ekim Cumhuriyet Bayramı'
+  };
+  const MEB_BREAK_RANGES = [
+    ['2025-11-10', '2025-11-14', '1. Dönem Ara Tatili'],
+    ['2026-01-19', '2026-01-30', 'Yarıyıl Tatili'],
+    ['2026-03-16', '2026-03-20', '2. Dönem Ara Tatili'],
+    ['2026-05-27', '2026-05-30', 'Kurban Bayramı'],
+    ['2026-11-09', '2026-11-13', '1. Dönem Ara Tatili'],
+    ['2027-01-18', '2027-01-29', 'Yarıyıl Tatili'],
+    ['2027-03-15', '2027-03-19', '2. Dönem Ara Tatili']
+  ];
+
+  function mebHolidaysForMonth(ym) {
+    const [yr, mo] = String(ym || defaultYearMonth()).split('-').map(Number);
+    if (!yr || !mo) return [];
+    const daysInMo = new Date(yr, mo, 0).getDate();
+    const hits = [];
+    for (let day = 1; day <= daysInMo; day++) {
+      const mmdd = `${String(mo).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const iso = `${yr}-${mmdd}`;
+      if (FIXED_TR_HOLIDAYS[mmdd]) {
+        hits.push({ date: iso, label: FIXED_TR_HOLIDAYS[mmdd] });
+        continue;
+      }
+      const brk = MEB_BREAK_RANGES.find(([s, e]) => iso >= s && iso <= e);
+      if (brk) hits.push({ date: iso, label: brk[2] });
+    }
+    return hits;
+  }
+
+  function applyMebHolidaysForMonth(S, yearMonth) {
+    const ym = yearMonth || (S.duty && S.duty.month) || defaultYearMonth();
+    const hits = mebHolidaysForMonth(ym);
+    S.duty = Object.assign({ places: dutyPlaces(S), admin: {}, closedDates: [], monthly: {} }, S.duty || {});
+    if (!Array.isArray(S.duty.closedDates)) S.duty.closedDates = [];
+    const set = new Set(S.duty.closedDates);
+    let added = 0;
+    for (const h of hits) {
+      if (!set.has(h.date)) { set.add(h.date); added++; }
+    }
+    S.duty.closedDates = [...set].sort();
+    buildMonthlyDuty(S, ym, S.duty.monthlyMode || 'rotate');
+    return { total: hits.length, added, items: hits };
+  }
+
+  /* MEB Haftalık / Aylık Otomatik Ek Ders Ön Hesap Özeti */
+  function computeEkDers(S) {
+    const L = EP.loads(S);
+    const rows = (S.teachers || []).map(t => {
+      const ak = staffAdminKind(S, t);
+      const dersSaati = Number(L[t.id] || 0);
+      const isVocational = /meslek|alan|atölye/i.test(t.branch || '');
+      const isSinifOgr = /sınıf öğretmenliği/i.test(t.branch || '');
+      const maasKarsiligi = (ak === 'mudur' || ak === 'mudur_yardimcisi')
+        ? 6
+        : ak === 'rehber'
+          ? 0
+          : isVocational ? 20 : isSinifOgr ? 18 : 15;
+      const gunduzEkDers = ak === 'rehber'
+        ? 18
+        : (ak === 'mudur' ? 25 : ak === 'mudur_yardimcisi' ? 19 : Math.max(0, dersSaati - maasKarsiligi));
+      const hazirlikPlanlama = (ak === 'mudur' || ak === 'mudur_yardimcisi' || ak === 'rehber')
+        ? 0
+        : Math.floor(dersSaati / 10);
+      const hasRehberlik = (S.classes || []).some(c => EP.rehberOf(S, c) === t.id);
+      const hasKulup = Boolean(t.kulup && String(t.kulup).trim());
+      const rehberlikKulup = (ak === 'mudur' || ak === 'mudur_yardimcisi' || ak === 'rehber')
+        ? 0
+        : ((hasRehberlik || hasKulup) ? 2 : 0);
+      const hasDuty = !isDutyExempt(S, t) && dutyOf(t).d >= 0;
+      const nobetEkDers = hasDuty ? 3 : 0;
+      const haftalikToplam = gunduzEkDers + hazirlikPlanlama + rehberlikKulup + nobetEkDers;
+      const aylikTahmini = haftalikToplam * 4;
+      return {
+        teacher: t,
+        adminKind: ak,
+        dersSaati,
+        maasKarsiligi,
+        gunduzEkDers,
+        hazirlikPlanlama,
+        rehberlikKulup,
+        nobetEkDers,
+        haftalikToplam,
+        aylikTahmini
+      };
+    });
+    const totals = rows.reduce((acc, r) => {
+      acc.dersSaati += r.dersSaati;
+      acc.gunduzEkDers += r.gunduzEkDers;
+      acc.hazirlikPlanlama += r.hazirlikPlanlama;
+      acc.rehberlikKulup += r.rehberlikKulup;
+      acc.nobetEkDers += r.nobetEkDers;
+      acc.haftalikToplam += r.haftalikToplam;
+      acc.aylikTahmini += r.aylikTahmini;
+      return acc;
+    }, { dersSaati: 0, gunduzEkDers: 0, hazirlikPlanlama: 0, rehberlikKulup: 0, nobetEkDers: 0, haftalikToplam: 0, aylikTahmini: 0 });
+    return { rows, totals };
+  }
+
+  function docEkDers(S) {
+    const r = rep(S), { rows, totals } = computeEkDers(S);
+    return `<section class="doc portrait"><div class="ttl">${EP.esc(upTR(kurumAdi(S)))} MÜDÜRLÜĞÜ<br>${EP.esc(S.school.year)} EĞİTİM ÖĞRETİM YILI HAFTALIK / AYLIK EK DERS ÖN HESAP ÖZETİ</div>
+      <div class="meta"><div><span>Dönem</span><span>: ${EP.esc(donemText(S))}</span></div><div><span>Personel Sayısı</span><span>: ${rows.length}</span></div><div><span>Geçerlilik</span><span>: ${fmtD(r.gecerli)}</span></div><div><span>Haftalık Toplam Ek Ders</span><span>: ${totals.haftalikToplam} saat</span></div></div>
+      <table class="l" style="margin-top:8px">
+        <thead><tr>
+          <th style="width:24px">S</th><th>Adı Soyadı</th><th>Branş / Görev</th>
+          <th style="width:44px">Ders</th><th style="width:44px">Maaş</th><th style="width:48px">Ek Ders</th>
+          <th style="width:44px">Haz.Pl.</th><th style="width:48px">Reh/Klp</th><th style="width:44px">Nöbet</th>
+          <th style="width:52px">Haftalık</th><th style="width:54px">Aylık (×4)</th>
+        </tr></thead>
+        <tbody>
+          ${rows.map((x, i) => `<tr>
+            <td class="c">${i + 1}</td>
+            <td><b>${EP.esc(upTR(x.teacher.name))}</b></td>
+            <td>${EP.esc(x.teacher.branch || '')}${x.adminKind ? ' · ' + EP.esc(dutyExemptReason(S, x.teacher)) : ''}</td>
+            <td class="c">${x.dersSaati}</td>
+            <td class="c">${x.maasKarsiligi}</td>
+            <td class="c">${x.gunduzEkDers}</td>
+            <td class="c">${x.hazirlikPlanlama}</td>
+            <td class="c">${x.rehberlikKulup}</td>
+            <td class="c">${x.nobetEkDers}</td>
+            <td class="c"><b>${x.haftalikToplam}</b></td>
+            <td class="c"><b>${x.aylikTahmini}</b></td>
+          </tr>`).join('')}
+          <tr style="background:#f2f4f7;font-weight:700">
+            <td colspan="3" style="text-align:right">GENEL TOPLAM</td>
+            <td class="c">${totals.dersSaati}</td>
+            <td class="c">—</td>
+            <td class="c">${totals.gunduzEkDers}</td>
+            <td class="c">${totals.hazirlikPlanlama}</td>
+            <td class="c">${totals.rehberlikKulup}</td>
+            <td class="c">${totals.nobetEkDers}</td>
+            <td class="c">${totals.haftalikToplam}</td>
+            <td class="c">${totals.aylikTahmini}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="note">Bu tablo bilgilendirme amaçlı MEB ek ders ön hesap özetidir: Kültür branşları 15 sa, Meslek/Alan 20 sa, Sınıf Öğretmenliği 18 sa maaş karşılığı; her 10 fiilî ders saatine 1 saat Hazırlık ve Planlama; Sınıf Rehberliği veya Sosyal Kulüp görevi için +2 saat; fiilî okul nöbeti için +3 saat esas alınmıştır. KBS kesin tahakkuk öncesi idarece kontrol edilmelidir.</p>
+      <div class="sig">${sigL(S)}${sigR(S)}</div></section>`;
+  }
+
   function checkMonthlyWeekDup(rows, rowIdx, place, names) {
     const row = rows && rows[rowIdx];
     if (!row || !Array.isArray(names) || !names.length) return null;
@@ -632,6 +787,7 @@
     else if (tab === 'cs') raw = docSheet(S, 'c', o);
     else if (tab === 'ts') raw = docSheet(S, 't', o);
     else if (tab === 'nb') raw = docDuty(S);
+    else if (tab === 'ek') raw = docEkDers(S);
     return decorateWatermark(raw, wm);
   }
 
@@ -767,7 +923,7 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
 
   const RTABS = [
     ['cp', 'Sınıf Programı'], ['cs', 'Sınıf Çarşaf'], ['tp', 'Öğretmen Programı'],
-    ['ts', 'Öğretmen Çarşaf'], ['nb', 'Okul Nöbeti ve Sosyal Kulüpler'], ['kq', 'Kalite Raporu']
+    ['ts', 'Öğretmen Çarşaf'], ['nb', 'Okul Nöbeti ve Sosyal Kulüpler'], ['ek', 'Ek Ders Özeti'], ['kq', 'Kalite Raporu']
   ];
 
   function vQuality(S, o, tot) {
@@ -805,7 +961,7 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
       </div></details>`;
 
     if (tab === 'kq') return head + tabs + vQuality(S, o, tot);
-    if (!tot && tab !== 'nb') return head + tabs + sets + '<div class="empty">Önce ders ekleyip dağıtım yapın.</div>';
+    if (!tot && tab !== 'nb' && tab !== 'ek') return head + tabs + sets + '<div class="empty">Önce ders ekleyip dağıtım yapın.</div>';
 
     // Sınıflar ve Öğretmenler için ayrı ayrı WhatsApp Görseli kartı
     const waClsId = S.ui.waCls && S.classes.some(c => c.id === S.ui.waCls) ? S.ui.waCls : (S.classes[0] ? S.classes[0].id : '');
@@ -853,6 +1009,10 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
         <button class="btn" data-act="exPrint">Yazdır</button>
         <button class="btn" data-act="exWord">Word (.doc)</button>
         <button class="btn" data-act="exCsv">Çarşaf tablosu (.csv)</button>`;
+    } else if (tab === 'ek') {
+      ctl = `<button class="btn pri" data-act="exPdf">Ek Ders PDF İndir (.pdf)</button>
+        <button class="btn" data-act="exPrint">Yazdır</button>
+        <button class="btn" data-act="exWord">Word (.doc)</button>`;
     } else if (tab === 'nb') {
       const pl = dutyPlaces(S), adm = (S.duty && S.duty.admin) || {}, D = +S.school.D;
       const vpNames = [...new Set([...myList(S).map(m => m.name), S.school.mudurYardimcisi, ...S.teachers.filter(t => t.role === 'mudur_yardimcisi').map(t => t.name)].filter(Boolean))];
@@ -1083,8 +1243,8 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
   Object.assign(EP, {
     DOC_CSS, RTABS, DUTY_STRATEGIES, AY_AD, rep, donemText, myList, dutyOf, dutyPlaces,
     staffAdminKind, isDutyExempt, dutyExemptReason, clubOptions, clubAuto,
-    teacherDailyLoads, defaultYearMonth, dutyClosedSet, toggleDutyClosedDate, clearMonthClosedDates, checkMonthlyWeekDup, buildMonthlyDuty, docMonthlyDuty,
-    docClass, docTeacher, docSheet, docDuty, dutyAuto, docsFor, docFile,
+    teacherDailyLoads, defaultYearMonth, dutyClosedSet, toggleDutyClosedDate, clearMonthClosedDates, mebHolidaysForMonth, applyMebHolidaysForMonth, checkMonthlyWeekDup, buildMonthlyDuty, docMonthlyDuty,
+    computeEkDers, docEkDers, docClass, docTeacher, docSheet, docDuty, dutyAuto, docsFor, docFile,
     csvExport, excelExport, wordExport, pngCanvas, buildZipBytes, evaluateSavedPlan, compareSavedPlans, vQuality, vRapor
   });
 })(typeof window !== 'undefined' ? window : globalThis);

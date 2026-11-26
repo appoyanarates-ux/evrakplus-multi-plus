@@ -64,14 +64,14 @@
     return {
       v: 3,
       schemaVersion: 3,
-      appVersion: '2.4.0',
+      appVersion: '2.5.0-beta.1',
       id: uid(),
       revision: 1,
       updatedAt: new Date().toISOString(),
       school: {
         name: 'Yeni Okul', year: '2026-2027', mudur: '', mudurYardimcisi: '', myard: [], donem: '1. Dönem',
         donemBas: '', donemBit: '', type: 'ilk', educationMode: 'full_day',
-        D: 5, P: 7, start: '08:30', len: 40, brk: 10, lunchAfter: 5, lunchLen: 40, customTimes: []
+        D: 5, P: 7, start: '08:30', morningStart: '07:30', afternoonStart: '13:00', len: 40, brk: 10, lunchAfter: 5, lunchLen: 40, customTimes: []
       },
       buildings: [{ id: bId, name: 'Ana Bina', code: 'B1', transitionPeriods: {} }],
       rooms: [{ id: uid(), name: 'Derslik 101', type: 'classroom', buildingId: bId, capacity: 32, closed: [] }],
@@ -205,6 +205,8 @@
       D: Number(sc.daysPerWeek || sc.D || 5),
       P: Number(sc.periodsPerDay || sc.P || 7),
       start: bell.startTime || sc.start || '08:30',
+      morningStart: (sc.bellSchedule && sc.bellSchedule.morning && (sc.bellSchedule.morning.startTime || sc.bellSchedule.morning.start)) || sc.morningStart || '07:30',
+      afternoonStart: (sc.bellSchedule && sc.bellSchedule.afternoon && (sc.bellSchedule.afternoon.startTime || sc.bellSchedule.afternoon.start)) || sc.afternoonStart || '13:00',
       len: Number(bell.lessonMinutes || sc.len || 40),
       brk: Number(bell.breakMinutes || sc.brk || 10),
       lunchAfter: Number(bell.lunchAfterPeriod ?? sc.lunchAfter ?? 5),
@@ -234,7 +236,10 @@
     const cardsSrc = Array.isArray(v3.assignments) ? v3.assignments : (Array.isArray(v3.cards) ? v3.cards : []);
     base.cards = cardsSrc.filter(c => !c.deletedAt).map(c => ({
       id: c.id || uid(), classId: c.classId, subj: c.subjectKey || c.subj, hours: Number(c.hours || 2),
-      pattern: c.pattern || patFor(c.hours || 2), teacherId: c.teacherId || '', roomId: c.roomId || '',
+      pattern: c.pattern || patFor(c.hours || 2), teacherId: c.teacherId || '',
+      coTeacherId: (Array.isArray(c.coTeacherIds) && c.coTeacherIds[0]) ? c.coTeacherIds[0] : (c.coTeacherId || ''),
+      syncGroup: c.parallelGroupId || c.syncGroup || '',
+      roomId: c.roomId || '',
       kind: c.kind || (EP.LEG_SEC.has(c.subjectKey || c.subj) ? 'secmeli' : 'zorunlu'),
       bmode: c.bmode, bpats: c.bpats
     }));
@@ -372,7 +377,7 @@
     const cleanUiState = sanitizeExportProject(S);
     return {
       schemaVersion: 3,
-      appVersion: '2.0.0',
+      appVersion: '2.5.0-beta.1',
       id: S.id || uid(),
       revision: Number(S.revision || 1),
       updatedAt: new Date().toISOString(),
@@ -397,6 +402,20 @@
             breakMinutes: Number(S.school.brk || 10),
             lunchAfterPeriod: Number(S.school.lunchAfter || 0),
             lunchMinutes: Number(S.school.lunchLen || 40)
+          },
+          morning: {
+            startTime: S.school.morningStart || '07:30',
+            lessonMinutes: Number(S.school.len || 40),
+            breakMinutes: Number(S.school.brk || 10),
+            lunchAfterPeriod: 0,
+            lunchMinutes: 0
+          },
+          afternoon: {
+            startTime: S.school.afternoonStart || '13:00',
+            lessonMinutes: Number(S.school.len || 40),
+            breakMinutes: Number(S.school.brk || 10),
+            lunchAfterPeriod: 0,
+            lunchMinutes: 0
           }
         }
       },
@@ -417,6 +436,8 @@
       assignments: (S.cards || []).map(c => ({
         id: c.id, classId: c.classId, subjectKey: c.subj, hours: Number(c.hours || 1),
         pattern: c.pattern || patFor(c.hours || 1), teacherId: c.teacherId || null,
+        coTeacherIds: (c.coTeacherId && c.coTeacherId !== c.teacherId) ? [c.coTeacherId] : [],
+        parallelGroupId: (c.syncGroup && String(c.syncGroup).trim()) ? String(c.syncGroup).trim() : null,
         roomId: c.roomId || null, kind: c.kind || 'zorunlu'
       })),
       constraints: constraintsV3,
@@ -528,19 +549,27 @@
   function syncAll(S, f) { let n = 0; for (const c of S.cards) if (!f || f(c)) if (syncPattern(S, c)) n++; return n; }
 
   /* ---------- Model, Yerleşim ve Ön Kontrol ---------- */
-  function autoTimes(S) {
-    const s = S.school, x = (s.start || '08:30').split(':').map(Number);
+  function autoTimesForStart(S, startOverride, skipLunch) {
+    const s = S.school, x = (startOverride || s.start || '08:30').split(':').map(Number);
     let t = (x[0] || 8) * 60 + (x[1] || 0);
     const f = v => String(Math.floor(v / 60) % 24).padStart(2, '0') + ':' + String(v % 60).padStart(2, '0'), out = [];
     for (let p = 0; p < +s.P; p++) {
       const a = t, b = t + (+s.len || 40);
       out.push({ start: f(a), end: f(b) });
-      t = b + ((p + 1) === (+s.lunchAfter) ? (+s.lunchLen || 40) : (+s.brk || 10));
+      t = b + ((!skipLunch && (p + 1) === (+s.lunchAfter)) ? (+s.lunchLen || 40) : (+s.brk || 10));
     }
     return out;
   }
 
-  function times(S) {
+  function autoTimes(S) {
+    return autoTimesForStart(S, S.school && S.school.start, false);
+  }
+
+  function times(S, shift) {
+    if (S.school && S.school.educationMode === 'dual_shift' && (shift === 'morning' || shift === 'afternoon')) {
+      const st = shift === 'morning' ? (S.school.morningStart || '07:30') : (S.school.afternoonStart || '13:00');
+      return autoTimesForStart(S, st, true).map(b => b.start + '–' + b.end);
+    }
     const base = autoTimes(S);
     const ct = Array.isArray(S.school && S.school.customTimes) ? S.school.customTimes : [];
     return base.map((b, p) => {
@@ -555,7 +584,15 @@
   const tName = t => (t ? t.name : 'Öğretmen yok');
   const tShort = t => (t ? (t.short || t.name.split(/\s+/).map(w => w[0]).join('').slice(0, 3).toUpperCase()) : '—');
   const cName = (S, id) => { const c = S.classes.find(x => x.id === id); return c ? c.name : '?'; };
-  function loads(S) { const L = {}; for (const c of S.cards) if (c.teacherId) L[c.teacherId] = (L[c.teacherId] || 0) + (+c.hours || 0); return L; }
+  function loads(S) {
+    const L = {};
+    for (const c of S.cards) {
+      const h = +c.hours || 0;
+      if (c.teacherId) L[c.teacherId] = (L[c.teacherId] || 0) + h;
+      if (c.coTeacherId && c.coTeacherId !== c.teacherId) L[c.coTeacherId] = (L[c.coTeacherId] || 0) + h;
+    }
+    return L;
+  }
   function openOf(S, t) {
     const D = +S.school.D, P = +S.school.P, dm = Math.min(P, +t.dmax || P);
     let tot = 0; const per = [];
@@ -631,6 +668,9 @@
         const cid = S.classes[b.c].id;
         (cG[cid] = cG[cid] || {})[key] = cell;
         if (b.t >= 0) { const tid = S.teachers[b.t].id; (tG[tid] = tG[tid] || {})[key] = cell; }
+        if (card && card.coTeacherId && card.coTeacherId !== card.teacherId) {
+          (tG[card.coTeacherId] = tG[card.coTeacherId] || {})[key] = cell;
+        }
         if (rid) { (rG[rid] = rG[rid] || {})[key] = cell; }
       }
     });
