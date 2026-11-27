@@ -1,5 +1,11 @@
 # DersMatrix Ultimate (by EvrakPlus) — Değişiklik Geçmişi (CHANGELOG)
 
+## [2.7.3] - 2026-11-27
+
+### Hata Düzeltmesi (Windows Yazdır Düğmesi)
+- **Windows Yazıcı Penceresi (`Yazdır`) Açılmama Sorunu Kesin Giderildi**: Electron 34 yazdırma motorunda `pageSize` belirtilmediği için oluşan *"Invalid printer settings (page size is empty)"* hatası, açık `pageSize: 'A4' | 'A3'` parametresi, `javascript: true` ve kilitsiz baskı penceresi ile düzeltildi; gerçek Windows `#32770 => Yazdır` iletişim kutusunun açıldığı doğrulandı.
+- **Otomatik PDF Yedek Açılışı**: Yazıcı sürücüsü sorunlu bilgisayarlarda yazdırma hatası oluşursa belge otomatik olarak geçici PDF ile açılır.
+
 ## [2.7.2] - 2026-11-27
 
 ### Hata Düzeltmesi (Akıllı Mini Yama — Electron ASAR Koruması)

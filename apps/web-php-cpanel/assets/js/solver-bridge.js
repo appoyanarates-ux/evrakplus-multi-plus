@@ -64,7 +64,7 @@
     return {
       v: 3,
       schemaVersion: 3,
-      appVersion: '2.7.2',
+      appVersion: '2.7.3',
       id: uid(),
       revision: 1,
       updatedAt: new Date().toISOString(),
@@ -377,7 +377,7 @@
     const cleanUiState = sanitizeExportProject(S);
     return {
       schemaVersion: 3,
-      appVersion: '2.7.2',
+      appVersion: '2.7.3',
       id: S.id || uid(),
       revision: Number(S.revision || 1),
       updatedAt: new Date().toISOString(),

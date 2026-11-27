@@ -125,7 +125,7 @@ test('Electron gömülü motor yolları ve electron-builder ASAR-dışı güvenl
   assert.ok(mainSrc.includes('process.noAsar = true'), 'Electron sanal ASAR çakışmasını önlemek için process.noAsar kullanılmalı');
   assert.ok(mainSrc.includes('app.asar.bin'), 'Mini yama app.asar.bin paket adını desteklemeli');
   assert.ok(mainSrc.includes('run-hidden.vbs'), 'Mini yama gizli VBS başlatıcı ile terminal penceresi açmamalı');
-  assert.ok(mainSrc.includes('show: true') && mainSrc.includes('parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined'));
+  assert.ok(mainSrc.includes('show: true') && mainSrc.includes('pageSize: paperSize'), 'Yazdırma penceresi görünür açılmalı ve pageSize (A4/A3) belirtilmeli');
   assert.ok(mainSrc.includes('win.webContents.print(') && mainSrc.includes('silent: false'));
   assert.ok(mainSrc.includes('Menu.setApplicationMenu(null)') && mainSrc.includes('mainWindow.removeMenu()'));
 });

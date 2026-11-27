@@ -10,7 +10,7 @@ import { resolveEmbeddedPaths } from './engine-paths.js';
 import { extractZipSafe } from './updater.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const APP_VERSION = '2.7.2';
+export const APP_VERSION = '2.7.3';
 export const APP_NAME = 'DersMatrix Ultimate';
 
 async function loadMultiSolver() {
@@ -521,16 +521,17 @@ async function printHtmlDirect(opts) {
   if (!opts || typeof opts.html !== 'string' || !opts.html.trim()) {
     throw new Error('Yazdırılacak içerik boş.');
   }
+  const paperSize = opts.paperSize === 'A3' ? 'A3' : 'A4';
+  const landscape = Boolean(opts.landscape);
   const tmpHtml = path.join(os.tmpdir(), `dersmatrix-print-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.html`);
   fs.writeFileSync(tmpHtml, opts.html, 'utf8');
   let win = null;
   try {
     win = new BrowserWindow({
       show: true,
-      parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined,
       title: 'Yazdır — DersMatrix Ultimate',
       icon: resolveAppIcon(),
-      width: opts.landscape ? 1120 : 860,
+      width: landscape ? 1120 : 860,
       height: 760,
       autoHideMenuBar: true,
       webPreferences: {
@@ -538,13 +539,16 @@ async function printHtmlDirect(opts) {
         contextIsolation: true,
         nodeIntegration: false,
         webSecurity: true,
-        javascript: false
+        javascript: true
       }
     });
     win.removeMenu();
     await win.loadFile(tmpHtml);
     await new Promise(r => setTimeout(r, 250));
-    if (!win.isDestroyed()) win.focus();
+    if (!win.isDestroyed()) {
+      win.show();
+      win.focus();
+    }
 
     const result = await new Promise(resolve => {
       let done = false;
@@ -558,7 +562,8 @@ async function printHtmlDirect(opts) {
         win.webContents.print({
           silent: false,
           printBackground: true,
-          landscape: Boolean(opts.landscape)
+          pageSize: paperSize,
+          landscape
         }, (success, failureReason) => {
           finish({ ok: Boolean(success), error: failureReason || '' });
         });
@@ -566,6 +571,24 @@ async function printHtmlDirect(opts) {
         finish({ ok: false, error: err && err.message ? err.message : String(err) });
       }
     });
+
+    // Olağan dışı yazıcı sürücüsü hatasında PDF önizleme yedeği
+    if (!result.ok && !result.canceled && result.error && !/cancel/i.test(result.error) && !win.isDestroyed()) {
+      try {
+        const pdfBuf = await win.webContents.printToPDF({
+          printBackground: true,
+          preferCSSPageSize: true,
+          landscape,
+          pageSize: paperSize,
+          margins: { top: 0.25, bottom: 0.25, left: 0.25, right: 0.25 }
+        });
+        const tmpPdf = path.join(os.tmpdir(), `DersMatrix-Yazdir-${Date.now()}.pdf`);
+        fs.writeFileSync(tmpPdf, pdfBuf);
+        await shell.openPath(tmpPdf);
+        return { ok: true, fallbackPdf: true, filePath: tmpPdf };
+      } catch {}
+    }
+
     return result;
   } finally {
     try { if (win && !win.isDestroyed()) win.destroy(); } catch {}

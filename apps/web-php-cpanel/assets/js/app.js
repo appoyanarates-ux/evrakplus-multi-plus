@@ -215,7 +215,7 @@
     $('#mX').addEventListener('click', () => { M.innerHTML = ''; });
   }
 
-  const APP_VER = (bridge && bridge.appVersion) || '2.7.2';
+  const APP_VER = (bridge && bridge.appVersion) || '2.7.3';
   let updateInfo = null;
   let updateProgress = null;
   const isMember = () => Boolean(authUser && (authUser.loggedIn || authUser.entitlementValid));
@@ -264,8 +264,13 @@
     if (bridge && typeof bridge.printHtml === 'function') {
       toast('Yazıcı penceresi açılıyor…');
       try {
-        const res = await bridge.printHtml({ html, landscape: Boolean(landscape) });
-        if (res && res.ok) toast('Yazdırma işi yazıcıya gönderildi.');
+        const res = await bridge.printHtml({
+          html,
+          landscape: Boolean(landscape),
+          paperSize: EP.rep(S).paper === 'A3' ? 'A3' : 'A4'
+        });
+        if (res && res.fallbackPdf) toast('Belge PDF önizleme ile açıldı; Ctrl+P ile yazdırabilirsiniz.');
+        else if (res && res.ok) toast('Yazdırma işi yazıcıya gönderildi.');
         else if (res && res.error && !res.canceled && !/cancel/i.test(res.error)) toast('Yazdırma uyarısı: ' + res.error);
       } catch (err) {
         toast('Yazdırma hatası: ' + (err && err.message ? err.message : String(err)));
