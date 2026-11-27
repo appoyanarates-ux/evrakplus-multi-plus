@@ -157,6 +157,23 @@ app.whenReady().then(async () => {
       assert(document.querySelector('#view').innerHTML.includes('EK DERS ÖN HESAP ÖZETİ'), 'Ek Ders belgesi render edilmeli');
       document.querySelector('[data-act="rtab"][data-v="cp"]').click();
       await wait(150);
+      // Belge bilgileri paneli açıkken tarih yazma / seçme testi (panel kapanmamalı, 0002 erken render etmemeli)
+      const repSets = document.querySelector('#repSets');
+      assert(repSets, 'Belge bilgileri details paneli bulunmalı');
+      repSets.open = true;
+      await wait(80);
+      const dateInp = document.querySelector('input[type="date"][data-rep="gecerli"]');
+      assert(dateInp, 'Geçerlilik tarihi alanı bulunmalı');
+      dateInp.value = '0002-11-27';
+      dateInp.dispatchEvent(new Event('change', { bubbles: true }));
+      await wait(80);
+      assert(document.querySelector('#repSets').open === true, 'Yıl yazılırken Belge Bilgileri paneli kapanmamalı');
+      assert(!document.querySelector('.paperwrap').innerHTML.includes('27/11/0002'), 'Eksik yıl (0002) önizlemeye yazılmamalı');
+      dateInp.value = '2026-11-27';
+      dateInp.dispatchEvent(new Event('change', { bubbles: true }));
+      await wait(80);
+      assert(document.querySelector('#repSets').open === true, 'Geçerli tarih seçilince panel açık kalmalı');
+      assert(document.querySelector('.paperwrap').innerHTML.includes('27/11/2026'), 'Seçilen tarih anında önizlemeye yansımalı');
       const firstClsId = document.querySelector('select[data-ui="waCls"] option')?.value;
       const firstTchId = document.querySelector('select[data-ui="waTch"] option')?.value;
       assert(firstClsId && firstTchId, 'Sınıf ve öğretmen WhatsApp seçimleri dolu olmalı');

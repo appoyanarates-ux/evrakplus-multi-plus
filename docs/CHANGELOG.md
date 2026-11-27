@@ -1,5 +1,11 @@
 # DersMatrix Ultimate (by EvrakPlus) — Değişiklik Geçmişi (CHANGELOG)
 
+## [2.6.1] - 2026-11-27
+
+### Hata Düzeltmesi ve Kullanım İyileştirmesi
+- **Tarih Girişi & Takvim Seçimi Düzeltmesi**: `Geçerlilik tarihi` ve dönem tarih alanlarında yıl yazılırken (`0002` gibi eksik yıl) ekranın erken yenilenip odağı koparması ve `Belge bilgileri ve kağıt ayarı` panelinin kapanması sorunu giderildi.
+- **Yerinde Önizleme Güncellemesi & Tek Tık "Bugün"**: Takvimden veya klavyeden seçilen tarih artık paneli kapatmadan anında alttaki belge önizlemesine yansır; tarih alanının yanına tek tıkla bugünün tarihini dolduran **Bugün** düğmesi eklendi.
+
 ## [2.6.0] - 2026-11-27
 
 ### Tasarım ve Kullanışlılık (UX) Yenilemesi

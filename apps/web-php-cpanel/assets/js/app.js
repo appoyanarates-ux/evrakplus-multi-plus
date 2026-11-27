@@ -213,7 +213,7 @@
     $('#mX').addEventListener('click', () => { M.innerHTML = ''; });
   }
 
-  const APP_VER = (bridge && bridge.appVersion) || '2.6.0';
+  const APP_VER = (bridge && bridge.appVersion) || '2.6.1';
   let updateInfo = null;
   let updateProgress = null;
   const isMember = () => Boolean(authUser && (authUser.loggedIn || authUser.entitlementValid));
@@ -521,8 +521,8 @@
       <p class="small muted" style="margin-top:4px">Okul Müdürü ve Müdür Yardımcısı bilgilerini yukarıdaki karttan girebilirsiniz; burada dönem tarihlerini ve nöbet çizelgesinde görev alacak diğer müdür yardımcılarını tanımlayın.</p>
       <div class="fields" style="margin-top:12px">
         <label class="f">Dönem<select data-k="school.donem">${EP.DONEM.map(v => `<option value="${v}" ${(s.donem || '') === v ? 'selected' : ''}>${v || '— seçilmedi —'}</option>`).join('')}</select></label>
-        <label class="f">Dönem başlangıcı<input type="date" data-k="school.donemBas" value="${esc(s.donemBas || '')}"></label>
-        <label class="f">Dönem bitişi<input type="date" data-k="school.donemBit" value="${esc(s.donemBit || '')}"></label>
+        <label class="f">Dönem başlangıcı<input type="date" min="2000-01-01" max="2099-12-31" data-k="school.donemBas" value="${esc(s.donemBas || '')}"></label>
+        <label class="f">Dönem bitişi<input type="date" min="2000-01-01" max="2099-12-31" data-k="school.donemBit" value="${esc(s.donemBit || '')}"></label>
       </div>
       <h3 style="margin:14px 0 6px">Diğer müdür yardımcıları (Nöbetçi İdareci listesi)</h3>
       ${my.length ? `<div class="diag" style="gap:6px">${my.map(m => `<div class="row" style="gap:8px">
@@ -3623,6 +3623,16 @@
         commit();
         toast('Kayıtlı dağıtım silindi.');
       } break;
+      case 'setRepToday': {
+        const now = new Date();
+        const iso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        snap();
+        S.report = S.report || {};
+        S.report.gecerli = iso;
+        S.ui.repSetsOpen = true;
+        commit();
+        toast('Geçerlilik tarihi bugüne ayarlandı.');
+      } break;
       case 'resetCustomTimes': {
         snap();
         S.school.customTimes = [];
@@ -3760,6 +3770,16 @@
       return;
     }
     if (el.dataset.k) {
+      if (el.type === 'date') {
+        const val = String(el.value || '').trim();
+        const yr = val ? Number(val.split('-')[0]) : 0;
+        // Yıl yazılırken (ör. 0002) erken render edip odak ve takvimi bozma!
+        if (val && (yr < 1900 || yr > 2100)) return;
+        snap();
+        setPath(el.dataset.k, val);
+        save();
+        return;
+      }
       snap(); let v = el.value;
       if (el.dataset.k === 'school.type') { S.school.type = v; commit(); const T = EP.typeOf(S); if (T && T.P !== +S.school.P) toast(`${T.ad} seçildi. Önerilen günlük ders sayısı ${T.P}.`); return; }
       if (el.type === 'number' || el.dataset.k === 'school.D') v = Math.max(0, +v || 0);
@@ -3842,7 +3862,27 @@
     if (el.dataset.bld) { const b = S.buildings.find(x => x.id === el.dataset.bld); if (b) { snap(); b[el.dataset.f] = el.value; commit(); } return; }
     if (el.dataset.btr) { const [b1, b2] = el.dataset.btr.split('|'); const b = S.buildings.find(x => x.id === b1); if (b) { snap(); b.transitionPeriods = b.transitionPeriods || {}; b.transitionPeriods[b2] = Math.max(0, +el.value || 0); commit(); } return; }
     if (el.dataset.room) { const r = S.rooms.find(x => x.id === el.dataset.room); if (r) { snap(); r[el.dataset.f] = el.type === 'number' ? Math.max(1, +el.value || 30) : el.value; commit(); } return; }
-    if (el.dataset.rep) { snap(); S.report = S.report || {}; S.report[el.dataset.rep] = el.value; commit(); return; }
+    if (el.dataset.rep) {
+      if (el.type === 'date') {
+        const val = String(el.value || '').trim();
+        const yr = val ? Number(val.split('-')[0]) : 0;
+        // Yıl hanesi henüz tamamlanmadıysa (ör. 0002-11-27) DOM'u yenileyip takvimi / odağı kapatma!
+        if (val && (yr < 1900 || yr > 2100)) return;
+        snap();
+        S.report = S.report || {};
+        S.report[el.dataset.rep] = val;
+        save();
+        // Yalnızca belge önizlemesini yerinde güncelle; tarih kutusu ve Belge Bilgileri paneli açık ve odakta kalsın
+        const pw = document.querySelector('#view .paperwrap');
+        if (pw && step === 'reports') {
+          const tab = S.ui.rtab || 'cp';
+          const selId = tab === 'cp' ? S.ui.rselc : tab === 'tp' ? S.ui.rselt : '';
+          pw.innerHTML = EP.docsFor(S, tab, selId || '', { watermark: !isMember() });
+        }
+        return;
+      }
+      snap(); S.report = S.report || {}; S.report[el.dataset.rep] = el.value; commit(); return;
+    }
     if (el.dataset.dplaces) { snap(); S.duty = S.duty || { admin: {} }; S.duty.places = el.value.split(',').map(x => x.trim()).filter(Boolean); commit(); return; }
     if (el.dataset.dadmin != null) { snap(); S.duty = S.duty || { places: [] }; S.duty.admin = S.duty.admin || {}; S.duty.admin[el.dataset.dadmin] = el.value; commit(); return; }
     if (el.dataset.dutycfg) {
@@ -3931,6 +3971,15 @@
       commit();
     }
   });
+
+  /* <details> panellerinin açık/kapalı durumunu koru (yeniden çizimde kapanmasın) */
+  document.addEventListener('toggle', e => {
+    const d = e.target;
+    if (d && d.tagName === 'DETAILS' && d.dataset && d.dataset.detailsUi && S && S.ui) {
+      S.ui[d.dataset.detailsUi] = Boolean(d.open);
+      save();
+    }
+  }, true);
 
   document.addEventListener('input', e => {
     if (e.target.id === 'pmQ') { if (pop) pop.q = e.target.value; pmFilter(); return; }

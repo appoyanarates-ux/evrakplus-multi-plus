@@ -950,12 +950,12 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
       `<button class="btn pri" data-act="exAllPdf">Tüm Belgeleri PDF İndir (.pdf)</button>`);
     const tabs = `<div class="tabs" style="margin-bottom:12px;display:inline-flex">${RTABS.map(x => `<button data-act="rtab" data-v="${x[0]}" class="${tab === x[0] ? 'on' : ''}">${x[1]}</button>`).join('')}</div>`;
     const vpCur = defaultVicePrincipalName(S);
-    const sets = `<details class="card" style="margin-bottom:12px;padding:12px 16px"><summary>Belge bilgileri ve kağıt ayarı <span class="small muted">· Okul Ayarları’ndan otomatik gelir</span> ${!r.mudur || !r.gecerli ? '<span class="tag" style="background:var(--warnBg);color:var(--warn)">eksik</span>' : ''}</summary>
+    const sets = `<details class="card" id="repSets" data-details-ui="repSetsOpen" style="margin-bottom:12px;padding:12px 16px" ${S.ui.repSetsOpen ? 'open' : ''}><summary>Belge bilgileri ve kağıt ayarı <span class="small muted">· Okul Ayarları’ndan otomatik gelir</span> ${!r.mudur || !r.gecerli ? '<span class="tag" style="background:var(--warnBg);color:var(--warn)">eksik</span>' : ''}</summary>
       <div class="fields" style="margin-top:10px">
         <label class="f">Kurum adı (başlıkta)<input data-rep="kurum" value="${EP.esc(r.kurum)}" placeholder="${EP.esc(S.school.name)}"></label>
         <label class="f">Okul müdürü<input data-k="school.mudur" value="${EP.esc(r.mudur)}" placeholder="Ad Soyad"></label>
         <label class="f">Müdür yardımcısı (imza)<input data-k="school.mudurYardimcisi" value="${EP.esc(S.school.mudurYardimcisi || '')}" placeholder="${EP.esc(vpCur || 'Ad Soyad')}"></label>
-        <label class="f">Geçerlilik tarihi<input type="date" data-rep="gecerli" value="${EP.esc(r.gecerli)}"></label>
+        <label class="f">Geçerlilik tarihi<div class="row" style="gap:6px;flex-wrap:nowrap"><input type="date" min="2000-01-01" max="2099-12-31" data-rep="gecerli" value="${EP.esc(r.gecerli)}" style="flex:1;min-width:130px"><button type="button" class="btn sm ghost" data-act="setRepToday" title="Bugünün tarihini yaz">Bugün</button></div></label>
         <label class="f">Sayı<input data-rep="sayi" value="${EP.esc(r.sayi)}"></label>
         <label class="f">Kağıt boyutu<select data-rep="paper"><option value="A4" ${r.paper !== 'A3' ? 'selected' : ''}>A4</option><option value="A3" ${r.paper === 'A3' ? 'selected' : ''}>A3 (Geniş Çarşaf)</option></select></label>
       </div></details>`;
