@@ -1,5 +1,11 @@
 # DersMatrix Ultimate (by EvrakPlus) — Değişiklik Geçmişi (CHANGELOG)
 
+## [2.5.1] - 2026-11-27
+
+### Arayüz ve Kullanım İyileştirmeleri
+- **Açılır-Kapanır Sol Menü**: Sol menü başlığına **`«`** gizleme düğmesi, üst çubuğa ise **`☰` / `☰ Menü`** aç/kapa düğmesi eklendi. Menü gizlendiğinde içerik alanı tam genişliğe (`max-width: none`) yayılır ve tercih otomatik hatırlanır.
+- **Tam Genişlik Program Şablonları**: Hem **Dağıtım ve Program** hem de **Haftalık Ders Programları** sayfalarında şablonların sağında yer alan *Elle düzenleme & Kilitleme* ile *Yerleşmeyen dersler* kartları **şablonların altına** (2 sütunlu düzenli görünümde) taşındı; sınıf, öğretmen ve çarşaf şablonları artık tüm ekran genişliğini kullanır.
+
 ## [2.5.0] - 2026-11-26
 
 ### Yenilikler ve Büyük İyileştirmeler

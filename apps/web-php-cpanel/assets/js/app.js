@@ -83,11 +83,23 @@
   const tName = t => EP.tName(t);
   const tShort = t => EP.tShort(t);
 
-  /* ---------- Tema, Kayıt, Geçmiş & Geri Al ---------- */
+  /* ---------- Tema, Sol Menü, Kayıt, Geçmiş & Geri Al ---------- */
   function applyTheme(t) {
     const root = document.documentElement;
     if (t === 'light' || t === 'dark') root.setAttribute('data-theme', t);
     else root.removeAttribute('data-theme');
+  }
+
+  function applySideCollapsed() {
+    const collapsed = Boolean(S && S.ui && S.ui.sideCollapsed);
+    const appEl = document.querySelector('.app');
+    if (appEl) appEl.classList.toggle('side-collapsed', collapsed);
+    const btn = $('#bToggleSide');
+    if (btn) {
+      btn.textContent = collapsed ? '☰ Menü' : '☰';
+      btn.title = collapsed ? 'Sol menüyü aç' : 'Sol menüyü gizle (geniş ekran)';
+      btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    }
   }
 
   function loadLocal() {
@@ -195,7 +207,7 @@
     $('#mX').addEventListener('click', () => { M.innerHTML = ''; });
   }
 
-  const APP_VER = (bridge && bridge.appVersion) || '2.5.0';
+  const APP_VER = (bridge && bridge.appVersion) || '2.5.1';
   let updateInfo = null;
   let updateProgress = null;
   const isMember = () => Boolean(authUser && (authUser.loggedIn || authUser.entitlementValid));
@@ -1515,7 +1527,7 @@
     }
     const g = (v === 'sinif' || v === 'ogr' || v === 'room') ? grid1(o, v === 'sinif' ? 'c' : v === 'ogr' ? 't' : 'r', ent, ed) : sheet(o, isC ? 'c' : 't', ed);
     const legend = `<div class="legend" style="margin-top:10px"><span><i style="background:repeating-linear-gradient(135deg,var(--closed) 0 2px,transparent 2px 6px)"></i>Kapalı saat</span><span><i style="box-shadow:inset 0 0 0 2px var(--warn)"></i>Tercihen boş</span><span><i style="background:var(--okBg);box-shadow:inset 0 0 0 2px var(--ok)"></i>Taşınabilir</span><span><i style="box-shadow:inset 0 0 0 3px var(--ok)"></i>Yer değiştirilebilir</span><span><i style="background:#dc2626"></i>Kilitli (Çift tıkla değiştir)</span><span><i style="box-shadow:inset 0 0 0 3px #2563eb"></i>Toplu seçim</span></div>`;
-    return `<div class="board"><div class="card">${tabs}${bulkBar}<div class="scroll">${g}</div>${legend}</div><div class="diag">${selPanel(o, ed)}${trayHtml(o)}</div></div>`;
+    return `<div class="board-stack"><div class="card">${tabs}${bulkBar}<div class="scroll">${g}</div>${legend}</div><div class="grid2" style="align-items:start">${selPanel(o, ed)}${trayHtml(o)}</div></div>`;
   }
 
   function reasonsHtml(o) {
@@ -2824,6 +2836,7 @@
     syncSubj();
     pc = EP.precheck(S);
     applyTheme(S.ui.theme || 'auto');
+    applySideCollapsed();
 
     $('#sideMenu').innerHTML = EP.MENUS.map((m, i) => `<a href="#${m[0]}" class="${step === m[0] ? 'on' : ''}" data-step="${m[0]}"><i>${i + 1}</i><span>${m[1]}</span>${m[0] === 'auto_schedule' && pc.some(x => x.lvl === 'err') ? '<b class="dot" title="Çakışma var"></b>' : ''}</a>`).join('');
     $('#topSchoolName').textContent = S.school.name + ' · ' + S.school.year + (S.school.donem && S.school.donem !== 'Yıllık' ? ' · ' + S.school.donem : '');
@@ -2869,6 +2882,11 @@
     const act = a.dataset.act, id = a.dataset.id;
 
     switch (act) {
+      case 'toggleSide':
+        S.ui.sideCollapsed = !S.ui.sideCollapsed;
+        save();
+        applySideCollapsed();
+        break;
       case 'undo': if (undo.length) { redo.push(JSON.stringify(S)); S = JSON.parse(undo.pop()); sel = ''; commit(); } break;
       case 'redo': if (redo.length) { undo.push(JSON.stringify(S)); S = JSON.parse(redo.pop()); sel = ''; commit(); } break;
       case 'saveJson': downloadBlob(fileName('json'), projJson(), 'application/json'); break;

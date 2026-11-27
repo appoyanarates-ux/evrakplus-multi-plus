@@ -170,6 +170,26 @@ app.whenReady().then(async () => {
       await wait(100);
       out.push('Flow 7 OK: Real Chromium canvas WhatsApp PNG generation');
 
+      // 8. Açılır-Kapanır Sol Menü + Şablon Altı Açıklama Düzeni (.board-stack)
+      const toggleBtn = document.querySelector('#bToggleSide');
+      const appEl = document.querySelector('.app');
+      assert(toggleBtn && appEl, 'Sol menü aç/kapa düğmesi bulunmalı');
+      assert(!appEl.classList.contains('side-collapsed'), 'Başlangıçta menü açık olmalı');
+      toggleBtn.click();
+      await wait(120);
+      assert(appEl.classList.contains('side-collapsed'), 'Tıklandığında sol menü kapanmalı');
+      toggleBtn.click();
+      await wait(120);
+      assert(!appEl.classList.contains('side-collapsed'), 'Tekrar tıklandığında sol menü açılmalı');
+      document.querySelector('a[data-step="timetables"]').click();
+      await wait(150);
+      const bs = document.querySelector('.board-stack');
+      assert(bs && bs.children.length === 2, 'Şablon tam genişlik üstte, açıklama+yerleşmeyenler altta olmalı');
+      const rTop = bs.children[0].getBoundingClientRect();
+      const rBot = bs.children[1].getBoundingClientRect();
+      assert(rBot.top >= rTop.bottom - 2, 'Açıklama ve yerleşmeyenler şablonun altında konumlanmalı');
+      out.push('Flow 8 OK: Collapsible sidebar + stacked full-width timetable layout');
+
       return { ok: true, flows: out };
     })()`);
 

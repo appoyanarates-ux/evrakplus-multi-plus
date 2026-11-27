@@ -32,5 +32,5 @@ test('E2E (Gerçek Chromium/Electron): 7 temel kullanıcı akışı uçtan uca d
   assert.ok(jsonLine, `E2E JSON çıktısı bekleniyordu, gelen: ${stdout}`);
   const parsed = JSON.parse(jsonLine);
   assert.equal(parsed.ok, true, `E2E hatası: ${parsed.error || stdout}`);
-  assert.equal(parsed.flows.length, 7, 'Tüm 7 E2E akışı başarıyla tamamlanmalı');
+  assert.equal(parsed.flows.length, 8, 'Tüm 8 E2E akışı başarıyla tamamlanmalı');
 });
