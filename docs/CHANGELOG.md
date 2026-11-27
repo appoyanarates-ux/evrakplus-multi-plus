@@ -1,5 +1,11 @@
 # DersMatrix Ultimate (by EvrakPlus) — Değişiklik Geçmişi (CHANGELOG)
 
+## [2.7.5] - 2026-11-28
+
+### Temiz & Doğrudan PDF Yazdırma Sistemi
+- **Yazdırma Katmanı Sıfırdan Sadeleştirildi (`printPdfDocument`)**: Eski özel önizleme penceresi tamamen kaldırıldı. `Yazdır` düğmesi artık ekstra boş pencere açmadan doğrudan gizli PDF düzenleyicide belgeyi hazırlayıp Windows'un kendi gerçek **`Yazdır`** penceresini tetikler.
+- **Akıllı Yazıcı Seçimi**: Bilgisayarda fiziksel yazıcı bağlıysa doğrudan o yazıcı seçili açılır; fiziksel yazıcı yoksa Windows'un standart yazdırma akışı (`Microsoft Print to PDF` / sanal yazıcılar) açılır; olağan dışı yazıcı sürücüsü hatasında ise belge geçici PDF olarak açılarak güvenle yazdırılır.
+
 ## [2.7.4] - 2026-11-28
 
 ### Modern İki Panelli Yazdır Önizleme Penceresi + Mini Yama Kilit Düzeltmesi

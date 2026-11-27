@@ -10,7 +10,7 @@ import { resolveEmbeddedPaths } from './engine-paths.js';
 import { extractZipSafe } from './updater.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const APP_VERSION = '2.7.4';
+export const APP_VERSION = '2.7.5';
 export const APP_NAME = 'DersMatrix Ultimate';
 
 async function loadMultiSolver() {
@@ -519,61 +519,44 @@ async function exportHtmlToPdf(opts) {
   }
 }
 
-let activePrintJob = null;
+const VIRTUAL_PRINTER_RE = /microsoft print to pdf|microsoft xps|onenote|^fax$/i;
 
-function finishActivePrintJob(payload) {
-  const job = activePrintJob;
-  if (!job) return;
-  activePrintJob = null;
-  try {
-    if (job.win && !job.win.isDestroyed()) job.win.destroy();
-  } catch {}
-  try {
-    if (typeof job.resolve === 'function') job.resolve(payload);
-  } catch {}
+function pickPreferredPrinter(printers = []) {
+  const list = Array.isArray(printers) ? printers : [];
+  const physical = list.filter(p => p && p.name && !VIRTUAL_PRINTER_RE.test(p.name));
+  if (physical.length) {
+    const defPhys = physical.find(p => p.isDefault) || physical[0];
+    return { hasPhysicalPrinter: true, deviceName: defPhys.name };
+  }
+  const defAny = list.find(p => p && p.isDefault) || list[0];
+  return { hasPhysicalPrinter: false, deviceName: defAny ? defAny.name : undefined };
 }
 
-async function executePrintPreviewJob(req = {}) {
-  const job = activePrintJob;
-  if (!job) return { ok: false, error: 'Aktif yazdırma işi bulunamadı.' };
-
-  const deviceName = String(req.deviceName || '');
-  const landscape = Boolean(req.landscape);
-  const paperSize = req.paperSize === 'A3' ? 'A3' : 'A4';
-  const copies = Math.max(1, Math.min(99, parseInt(req.copies, 10) || 1));
-  const color = req.color !== false;
-  const printBackground = req.printBackground !== false;
-  const useSystemDialog = Boolean(req.useSystemDialog);
-
-  if (deviceName === '__PDF__') {
-    const res = await exportHtmlToPdf({
-      html: job.html,
-      defaultFilename: (job.title || 'DersMatrix-Program') + '.pdf',
-      landscape,
-      paperSize
-    });
-    if (res && res.ok) {
-      finishActivePrintJob({ ok: true, savedPdf: true, filePath: res.filePath });
-      return { ok: true, savedPdf: true };
-    }
-    return { ok: false, canceled: Boolean(res && res.canceled) };
+/**
+ * Temiz PDF tabanlı yazdırma fonksiyonu:
+ * - Gizli pencerede belgeyi tam A4/A3 + Dikey/Yatay olarak hazırlar (ekstra boş pencere açmaz).
+ * - Bilgisayarda fiziksel yazıcı bağlıysa o yazıcı seçili olarak Windows Yazdır penceresini tetikler.
+ * - Fiziksel yazıcı yoksa Windows'un standart yazdırma akışını (PDF / sanal yazıcılar) açar.
+ * - Yazıcı servisi beklenmedik hata verirse belgeyi geçici PDF olarak oluşturup sistem PDF görüntüleyicide açar.
+ */
+async function printPdfDocument(opts) {
+  if (!opts || typeof opts.html !== 'string' || !opts.html.trim()) {
+    throw new Error('Yazdırılacak içerik boş.');
   }
+  const paperSize = opts.paperSize === 'A3' ? 'A3' : 'A4';
+  const landscape = Boolean(opts.landscape);
+  const pageOverride = `<style>@page{size:${paperSize} ${landscape ? 'landscape' : 'portrait'};margin:${landscape ? '6mm' : '8mm'}}</style>`;
+  const finalHtml = opts.html.includes('</head>') ? opts.html.replace('</head>', pageOverride + '</head>') : pageOverride + opts.html;
 
-  let pWin = null;
-  let tmpHtml = '';
+  const tmpHtml = path.join(os.tmpdir(), `dersmatrix-print-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.html`);
+  fs.writeFileSync(tmpHtml, finalHtml, 'utf8');
+
+  let win = null;
   try {
-    const pageOverride = `<style>@page{size:${paperSize} ${landscape ? 'landscape' : 'portrait'}!important;margin:${landscape ? '6mm' : '8mm'}!important}</style>`;
-    const finalHtml = job.html.includes('</head>') ? job.html.replace('</head>', pageOverride + '</head>') : pageOverride + job.html;
-    tmpHtml = path.join(os.tmpdir(), `dersmatrix-print-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.html`);
-    fs.writeFileSync(tmpHtml, finalHtml, 'utf8');
-
-    pWin = new BrowserWindow({
-      show: useSystemDialog,
-      title: 'Yazdır — DersMatrix Ultimate',
-      icon: resolveAppIcon(),
+    win = new BrowserWindow({
+      show: false,
       width: landscape ? 1120 : 860,
       height: 760,
-      autoHideMenuBar: true,
       webPreferences: {
         sandbox: true,
         contextIsolation: true,
@@ -582,22 +565,26 @@ async function executePrintPreviewJob(req = {}) {
         javascript: true
       }
     });
-    pWin.removeMenu();
-    await pWin.loadFile(tmpHtml);
-    await new Promise(r => setTimeout(r, 220));
-    if (useSystemDialog && !pWin.isDestroyed()) pWin.focus();
+    await win.loadFile(tmpHtml);
+    await new Promise(r => setTimeout(r, 180));
+
+    let printers = [];
+    try {
+      printers = await win.webContents.getPrintersAsync();
+    } catch {
+      printers = [];
+    }
+    const picked = pickPreferredPrinter(printers);
 
     const printRes = await new Promise(resolve => {
       let done = false;
       const doneOnce = payload => { if (!done) { done = true; resolve(payload); } };
-      pWin.once('closed', () => doneOnce({ ok: false, canceled: true }));
+      win.once('closed', () => doneOnce({ ok: false, canceled: true }));
       try {
-        pWin.webContents.print({
-          silent: !useSystemDialog,
-          printBackground,
-          deviceName: deviceName || undefined,
-          copies,
-          color,
+        win.webContents.print({
+          silent: false,
+          printBackground: true,
+          deviceName: picked.deviceName,
           pageSize: paperSize,
           landscape
         }, (success, failureReason) => {
@@ -609,85 +596,30 @@ async function executePrintPreviewJob(req = {}) {
     });
 
     if (printRes.ok) {
-      finishActivePrintJob({ ok: true, printer: deviceName });
-      return { ok: true };
+      return { ok: true, hasPhysicalPrinter: picked.hasPhysicalPrinter, printer: picked.deviceName || '' };
     }
-    return {
-      ok: false,
-      canceled: Boolean(printRes.canceled || /cancel/i.test(printRes.error || '')),
-      error: printRes.error || 'Yazdırma tamamlanamadı.'
-    };
+
+    const isCanceled = Boolean(printRes.canceled || !printRes.error || /cancel/i.test(printRes.error));
+    if (isCanceled) {
+      return { ok: false, canceled: true };
+    }
+
+    // Yazıcı sürücüsü / spooler hatasında güvenli PDF yedek açılışı
+    const pdfBuf = await win.webContents.printToPDF({
+      printBackground: true,
+      preferCSSPageSize: true,
+      landscape,
+      pageSize: paperSize,
+      margins: { top: 0.25, bottom: 0.25, left: 0.25, right: 0.25 }
+    });
+    const tmpPdf = path.join(os.tmpdir(), `DersMatrix-Yazdir-${Date.now()}.pdf`);
+    fs.writeFileSync(tmpPdf, pdfBuf);
+    await shell.openPath(tmpPdf);
+    return { ok: true, fallbackPdf: true, filePath: tmpPdf };
   } finally {
-    try { if (pWin && !pWin.isDestroyed()) pWin.destroy(); } catch {}
+    try { if (win && !win.isDestroyed()) win.destroy(); } catch {}
     try { if (tmpHtml && fs.existsSync(tmpHtml)) fs.unlinkSync(tmpHtml); } catch {}
   }
-}
-
-async function printHtmlDirect(opts) {
-  if (!opts || typeof opts.html !== 'string' || !opts.html.trim()) {
-    throw new Error('Yazdırılacak içerik boş.');
-  }
-  if (activePrintJob) {
-    finishActivePrintJob({ ok: false, canceled: true });
-  }
-
-  let printers = [];
-  try {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      printers = await mainWindow.webContents.getPrintersAsync();
-    }
-  } catch {
-    printers = [];
-  }
-
-  const paperSize = opts.paperSize === 'A3' ? 'A3' : 'A4';
-  const landscape = Boolean(opts.landscape);
-  const title = String(opts.title || 'DersMatrix Belge');
-
-  return new Promise(resolve => {
-    const win = new BrowserWindow({
-      show: true,
-      title: `Yazdır — ${title}`,
-      icon: resolveAppIcon(),
-      width: 1180,
-      height: 780,
-      minWidth: 880,
-      minHeight: 580,
-      autoHideMenuBar: true,
-      webPreferences: {
-        preload: path.join(__dirname, 'print-preview-preload.cjs'),
-        sandbox: true,
-        contextIsolation: true,
-        nodeIntegration: false,
-        webSecurity: true
-      }
-    });
-    win.removeMenu();
-
-    activePrintJob = {
-      html: opts.html,
-      title,
-      landscape,
-      paperSize,
-      printers: printers.map(p => ({
-        name: p.name,
-        displayName: p.displayName || p.name,
-        isDefault: Boolean(p.isDefault)
-      })),
-      win,
-      resolve
-    };
-
-    win.on('closed', () => {
-      if (activePrintJob && activePrintJob.win === win) {
-        finishActivePrintJob({ ok: false, canceled: true });
-      }
-    });
-
-    win.loadFile(path.join(__dirname, 'print-preview.html')).catch(err => {
-      finishActivePrintJob({ ok: false, error: err && err.message ? err.message : String(err) });
-    });
-  });
 }
 
 async function savePngBatch(opts = {}) {
@@ -873,17 +805,7 @@ function registerIpcHandlers() {
   ipcMain.handle('updater:check', () => checkLatestRelease());
   ipcMain.handle('updater:downloadAndInstall', (_ev, info) => downloadAndInstallRelease(info));
   ipcMain.handle('export:pdf', (_ev, opts) => exportHtmlToPdf(opts));
-  ipcMain.handle('export:print', (_ev, opts) => printHtmlDirect(opts));
-  ipcMain.handle('printPreview:getJob', () => {
-    if (!activePrintJob) return null;
-    const { html, title, landscape, paperSize, printers } = activePrintJob;
-    return { html, title, landscape, paperSize, printers };
-  });
-  ipcMain.handle('printPreview:execute', (_ev, req) => executePrintPreviewJob(req));
-  ipcMain.handle('printPreview:cancel', () => {
-    finishActivePrintJob({ ok: false, canceled: true });
-    return true;
-  });
+  ipcMain.handle('export:print', (_ev, opts) => printPdfDocument(opts));
   ipcMain.handle('export:savePngBatch', (_ev, opts) => savePngBatch(opts));
   ipcMain.handle('savedPlans:list', (_ev, projectId) => {
     if (typeof projectId !== 'string' || projectId.length > 120) return [];

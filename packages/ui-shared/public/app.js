@@ -215,7 +215,7 @@
     $('#mX').addEventListener('click', () => { M.innerHTML = ''; });
   }
 
-  const APP_VER = (bridge && bridge.appVersion) || '2.7.4';
+  const APP_VER = (bridge && bridge.appVersion) || '2.7.5';
   let updateInfo = null;
   let updateProgress = null;
   const isMember = () => Boolean(authUser && (authUser.loggedIn || authUser.entitlementValid));
@@ -260,9 +260,9 @@
     toast('Yazdırma / PDF kaydetme penceresi açıldı (Hedef: PDF olarak kaydet).');
   }
 
-  async function printReportNow(html, landscape, title) {
+  async function printPdfReport(html, landscape, title) {
     if (bridge && typeof bridge.printHtml === 'function') {
-      toast('Yazdırma önizleme penceresi açılıyor…');
+      toast('Yazıcı penceresi açılıyor…');
       try {
         const res = await bridge.printHtml({
           html,
@@ -270,8 +270,8 @@
           landscape: Boolean(landscape),
           paperSize: EP.rep(S).paper === 'A3' ? 'A3' : 'A4'
         });
-        if (res && res.savedPdf) toast('PDF belgesi kaydedildi ve açıldı.');
-        else if (res && res.ok) toast('Yazdırma işi yazıcıya gönderildi.');
+        if (res && res.fallbackPdf) toast('Belge PDF olarak açıldı; Ctrl+P ile yazdırabilirsiniz.');
+        else if (res && res.ok) toast('Yazdırma işlemi yazıcıya gönderildi.');
         else if (res && res.error && !res.canceled && !/cancel/i.test(res.error)) toast('Yazdırma uyarısı: ' + res.error);
       } catch (err) {
         toast('Yazdırma hatası: ' + (err && err.message ? err.message : String(err)));
@@ -3591,7 +3591,7 @@
         const wm = mode !== 'clean', title = S.school.name + ' Haftalik Nobet';
         const body = EP.docsFor(S, 'nb', '', { watermark: wm });
         if (act === 'exDutyWord') downloadBlob(title.replace(/[\\/:*?"<>|]+/g, '') + '.doc', `\uFEFF<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><style>${EP.DOC_CSS}</style></head><body>${body}</body></html>`, 'application/msword;charset=utf-8');
-        else if (act === 'exDutyPrint') await printReportNow(EP.docFile(S, body, title), false, title);
+        else if (act === 'exDutyPrint') await printPdfReport(EP.docFile(S, body, title), false, title);
         else await exportReportPdf(EP.docFile(S, body, title), title, false);
       } break;
       case 'exMonthlyPdf': case 'exMonthlyPrint': case 'exMonthlyExcel': case 'exMonthlyWord': {
@@ -3603,7 +3603,7 @@
         const body = EP.docMonthlyDuty(S, ym, { watermark: wm });
         if (act === 'exMonthlyExcel') downloadBlob(title.replace(/[\\/:*?"<>|]+/g, '') + '.xls', `\uFEFF<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><style>${EP.DOC_CSS}</style></head><body>${body}</body></html>`, 'application/vnd.ms-excel;charset=utf-8');
         else if (act === 'exMonthlyWord') downloadBlob(title.replace(/[\\/:*?"<>|]+/g, '') + '.doc', `\uFEFF<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><style>${EP.DOC_CSS}</style></head><body>${body}</body></html>`, 'application/msword;charset=utf-8');
-        else if (act === 'exMonthlyPrint') await printReportNow(EP.docFile(S, body, title), false, title);
+        else if (act === 'exMonthlyPrint') await printPdfReport(EP.docFile(S, body, title), false, title);
         else await exportReportPdf(EP.docFile(S, body, title), title, false);
       } break;
       case 'clubAuto': snap(); { const n = EP.clubAuto(S); commit(); toast(n ? n + ' öğretmene MEB sosyal kulüp atandı.' : 'Tüm öğretmenlerin kulübü zaten tanımlı.'); } break;
@@ -3641,7 +3641,7 @@
         const body = EP.docsFor(S, tab, selId || '', { watermark: wm });
         const title = S.school.name + ' ' + ((EP.RTABS.find(x => x[0] === tab) || [])[1] || 'program');
         const isLandscape = tab === 'cs' || tab === 'ts';
-        await printReportNow(EP.docFile(S, body, title), isLandscape, title);
+        await printPdfReport(EP.docFile(S, body, title), isLandscape, title);
       } break;
       case 'exExcel': {
         const mode = await resolveExportMode('Excel (.xls) dışa aktarma');
