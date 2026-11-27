@@ -1,5 +1,12 @@
 # DersMatrix Ultimate (by EvrakPlus) — Değişiklik Geçmişi (CHANGELOG)
 
+## [2.7.0] - 2026-11-27
+
+### Akıllı Mini Yama (~1–2 MB Hızlı Güncelleme Sistemi)
+- **~1–2 MB Hızlı Mini Yama (`DersMatrix-Patch-X.Y.Z.zip`)**: Arayüz ve uygulama kodu güncellemelerinde artık tüm ~243 MB kurulum paketini indirmeye gerek kalmadı. Kurulu masaüstü uygulaması yalnızca değişen arayüz ve çekirdek dosyalarını içeren ~1–2 MB boyutundaki mini yama paketini indirir, SHA-256 doğrulamasından geçirir, terminal penceresi açmadan günceller ve yaklaşık 2 saniye içinde yeni sürümle otomatik olarak yeniden açılır.
+- **Otomatik Geri Alma (Rollback) & Tam Kurulum Yedeği**: Güncelleme sırasında beklenmedik bir dosya hatası olursa önceki çalışan dosyalar `.bak` yedeğinden otomatik geri yüklenir. Electron motor sürümü değiştiğinde veya kurulum klasörü salt-okunur (yönetici izni gerektiren) olduğunda sistem sorunsuz biçimde tam kurulum paketine (`Setup.exe`) geçer.
+- **Güncelleme Bildirimi İyileştirmesi**: Üst güncelleme bandında ve `Sistem ve Güncellemeler` ekranında artık paket boyutu ve **`Hızlı Mini Yama · X.X MB`** / **`Hızlı Güncelle`** bilgisi açıkça gösterilir.
+
 ## [2.6.1] - 2026-11-27
 
 ### Hata Düzeltmesi ve Kullanım İyileştirmesi

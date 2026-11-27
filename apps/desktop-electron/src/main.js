@@ -7,9 +7,10 @@ import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow, dialog, ipcMain, Menu, session, shell } from 'electron';
 import { SqliteProjectStore } from './sqlite-store.js';
 import { resolveEmbeddedPaths } from './engine-paths.js';
+import { extractZipSafe } from './updater.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const APP_VERSION = '2.6.1';
+export const APP_VERSION = '2.7.0';
 export const APP_NAME = 'DersMatrix Ultimate';
 
 async function loadMultiSolver() {
@@ -185,6 +186,16 @@ function notifyUpdater(payload) {
   }
 }
 
+function canHotPatch() {
+  if (process.platform !== 'win32' || !app || !app.isPackaged || !process.resourcesPath) return false;
+  try {
+    fs.accessSync(process.resourcesPath, fs.constants.W_OK);
+    return fs.existsSync(path.join(process.resourcesPath, 'app.asar'));
+  } catch {
+    return false;
+  }
+}
+
 async function checkLatestRelease() {
   try {
     const res = await fetch(RELEASE_API_URL, {
@@ -200,9 +211,11 @@ async function checkLatestRelease() {
     const latestVersion = String(rel.tag_name || '').replace(/^v/i, '') || APP_VERSION;
     const assets = Array.isArray(rel.assets) ? rel.assets : [];
     const setupAsset = assets.find(a => /-Setup\.exe$/i.test(a.name || ''));
+    const patchAsset = assets.find(a => /-Patch-.*\.zip$/i.test(a.name || '') || /patch.*\.zip$/i.test(a.name || ''));
     const blockmapAsset = assets.find(a => /-Setup\.exe\.blockmap$/i.test(a.name || ''));
     const sumAsset = assets.find(a => /^SHA256SUMS\.txt$/i.test(a.name || ''));
-    const updateAvailable = compareSemver(latestVersion, APP_VERSION) > 0 && Boolean(setupAsset);
+    const updateAvailable = compareSemver(latestVersion, APP_VERSION) > 0 && Boolean(setupAsset || patchAsset);
+    const patchReady = Boolean(patchAsset && canHotPatch());
 
     const info = {
       currentVersion: APP_VERSION,
@@ -213,6 +226,11 @@ async function checkLatestRelease() {
       assetName: setupAsset ? setupAsset.name : '',
       assetSize: setupAsset ? setupAsset.size : 0,
       downloadUrl: setupAsset ? setupAsset.browser_download_url : '',
+      patchName: patchAsset ? patchAsset.name : '',
+      patchSize: patchAsset ? patchAsset.size : 0,
+      patchUrl: patchAsset ? patchAsset.browser_download_url : '',
+      supportsPatch: patchReady,
+      updateMode: patchReady ? 'patch' : 'full',
       blockmapUrl: blockmapAsset ? blockmapAsset.browser_download_url : '',
       supportsDelta: Boolean(setupAsset && blockmapAsset),
       sha256Url: sumAsset ? sumAsset.browser_download_url : ''
@@ -228,25 +246,18 @@ async function checkLatestRelease() {
   }
 }
 
-async function downloadAndInstallRelease(reqInfo) {
-  const info = (reqInfo && reqInfo.downloadUrl) ? reqInfo : (latestUpdateCache || await checkLatestRelease());
-  if (!info || !info.downloadUrl || !/^https:\/\//i.test(info.downloadUrl)) {
-    throw new Error('İndirilecek geçerli güncelleme paketi bulunamadı.');
-  }
-
-  const targetName = (info.assetName || `DersMatrix-Ultimate-${info.latestVersion}-Setup.exe`).replace(/[^a-zA-Z0-9._-]/g, '');
-  const destPath = path.join(os.tmpdir(), targetName);
-
-  notifyUpdater({ type: 'progress', percent: 1, message: 'Güncelleme paketi indiriliyor…' });
-  const resp = await fetch(info.downloadUrl, {
+async function downloadAndVerifyAsset({ url, destPath, assetName, sha256Url, totalHint = 0, label = 'Güncelleme indiriliyor' }) {
+  notifyUpdater({ type: 'progress', percent: 1, message: `${label}…` });
+  const resp = await fetch(url, {
     headers: { 'User-Agent': `DersMatrix-Ultimate/${APP_VERSION}` }
   });
   if (!resp.ok || !resp.body) {
     throw new Error(`Güncelleme indirilemedi (HTTP ${resp.status}).`);
   }
 
-  const totalBytes = Number(resp.headers.get('content-length') || info.assetSize || 0);
+  const totalBytes = Number(resp.headers.get('content-length') || totalHint || 0);
   const hash = crypto.createHash('sha256');
+  fs.mkdirSync(path.dirname(destPath), { recursive: true });
   const out = fs.createWriteStream(destPath);
   let downloaded = 0;
   let lastReport = 0;
@@ -258,10 +269,10 @@ async function downloadAndInstallRelease(reqInfo) {
       out.write(buf);
       downloaded += buf.length;
       const now = Date.now();
-      if (now - lastReport > 250) {
+      if (now - lastReport > 180) {
         lastReport = now;
         const percent = totalBytes > 0 ? Math.min(99, Math.round((downloaded / totalBytes) * 100)) : 50;
-        notifyUpdater({ type: 'progress', percent, downloaded, totalBytes, message: `İndiriliyor… %${percent}` });
+        notifyUpdater({ type: 'progress', percent, downloaded, totalBytes, message: `${label}… %${percent}` });
       }
     }
     await new Promise((resolve, reject) => {
@@ -275,24 +286,149 @@ async function downloadAndInstallRelease(reqInfo) {
   }
 
   const actualSha = hash.digest('hex').toLowerCase();
-  if (info.sha256Url && /^https:\/\//i.test(info.sha256Url)) {
+  if (sha256Url && /^https:\/\//i.test(sha256Url)) {
     notifyUpdater({ type: 'verifying', percent: 99, message: 'SHA-256 bütünlük doğrulaması yapılıyor…' });
-    const sumResp = await fetch(info.sha256Url, { headers: { 'User-Agent': `DersMatrix-Ultimate/${APP_VERSION}` } });
+    const sumResp = await fetch(sha256Url, { headers: { 'User-Agent': `DersMatrix-Ultimate/${APP_VERSION}` } });
     if (sumResp.ok) {
       const txt = await sumResp.text();
-      const line = txt.split(/\r?\n/).find(l => l.trim().endsWith(info.assetName));
+      const line = txt.split(/\r?\n/).find(l => l.trim().endsWith(assetName));
       if (line) {
         const expectedSha = line.trim().split(/\s+/)[0].toLowerCase();
         if (expectedSha && expectedSha !== actualSha) {
           try { fs.unlinkSync(destPath); } catch {}
-          throw new Error('Güncelleme dosyası SHA-256 doğrulamasından geçemedi; kurulum iptal edildi.');
+          throw new Error('Güncelleme dosyası SHA-256 doğrulamasından geçemedi; işlem iptal edildi.');
         }
       }
     }
   }
+  return { actualSha, bytes: downloaded };
+}
+
+async function tryHotPatchInstall(info) {
+  const workDir = path.join(os.tmpdir(), `dersmatrix-patch-${info.latestVersion}-${Date.now()}`);
+  const zipPath = path.join(workDir, 'patch.zip');
+  const unpackedDir = path.join(workDir, 'unpacked');
+  const sizeMb = info.patchSize ? ` (${(info.patchSize / (1024 * 1024)).toFixed(1)} MB)` : '';
+
+  const { actualSha } = await downloadAndVerifyAsset({
+    url: info.patchUrl,
+    destPath: zipPath,
+    assetName: info.patchName,
+    sha256Url: info.sha256Url,
+    totalHint: info.patchSize,
+    label: `Hızlı mini yama indiriliyor${sizeMb}`
+  });
+
+  notifyUpdater({ type: 'verifying', percent: 99, message: 'Mini yama paketi açılıyor ve kontrol ediliyor…' });
+  extractZipSafe(zipPath, unpackedDir);
+
+  const manifestPath = path.join(unpackedDir, 'manifest.json');
+  const newAsar = path.join(unpackedDir, 'app.asar');
+  const newUiDir = path.join(unpackedDir, 'ui-shared', 'public');
+  if (!fs.existsSync(manifestPath) || !fs.existsSync(newAsar) || !fs.existsSync(path.join(newUiDir, 'index.html'))) {
+    try { fs.rmSync(workDir, { recursive: true, force: true }); } catch {}
+    return { fallbackToFull: true, reason: 'INCOMPLETE_PATCH' };
+  }
+
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  if (manifest.requiresFullInstaller || (manifest.minElectron && manifest.minElectron !== process.versions.electron)) {
+    try { fs.rmSync(workDir, { recursive: true, force: true }); } catch {}
+    return { fallbackToFull: true, reason: 'ELECTRON_VERSION_CHANGED' };
+  }
+
+  const resDir = process.resourcesPath;
+  const exePath = process.execPath;
+  const logPath = path.join(os.tmpdir(), 'dersmatrix-patch-last.log');
+  const psPath = path.join(workDir, 'apply.ps1');
+  const vbsPath = path.join(workDir, 'run-hidden.vbs');
+
+  const psEsc = s => String(s).replace(/'/g, "''");
+  const psScript = [
+    "$ErrorActionPreference = 'Stop'",
+    `$appPid = ${process.pid}`,
+    `$resDir = '${psEsc(resDir)}'`,
+    `$newAsar = '${psEsc(newAsar)}'`,
+    `$newUi = '${psEsc(newUiDir)}'`,
+    `$exePath = '${psEsc(exePath)}'`,
+    `$workDir = '${psEsc(workDir)}'`,
+    `$logPath = '${psEsc(logPath)}'`,
+    "try { Wait-Process -Id $appPid -Timeout 12 -ErrorAction SilentlyContinue } catch {}",
+    "Start-Sleep -Milliseconds 400",
+    "$targetAsar = Join-Path $resDir 'app.asar'",
+    "$bakAsar = Join-Path $resDir 'app.asar.bak'",
+    "$targetUi = Join-Path $resDir 'ui-shared\\public'",
+    "$bakUi = Join-Path $resDir 'ui-shared\\public.bak'",
+    "try {",
+    "  if (Test-Path $bakAsar) { Remove-Item $bakAsar -Force -ErrorAction SilentlyContinue }",
+    "  if (Test-Path $bakUi) { Remove-Item $bakUi -Recurse -Force -ErrorAction SilentlyContinue }",
+    "  $copied = $false",
+    "  for ($i = 0; $i -lt 16; $i++) {",
+    "    try {",
+    "      if (Test-Path $targetAsar) { Copy-Item $targetAsar $bakAsar -Force }",
+    "      Copy-Item $newAsar $targetAsar -Force",
+    "      $copied = $true; break",
+    "    } catch { Start-Sleep -Milliseconds 300 }",
+    "  }",
+    "  if (-not $copied) { throw 'app.asar yazilamadi (dosya kilitli).' }",
+    "  if (Test-Path $targetUi) { Move-Item $targetUi $bakUi -Force }",
+    "  New-Item -ItemType Directory -Path (Split-Path $targetUi -Parent) -Force | Out-Null",
+    "  Copy-Item $newUi $targetUi -Recurse -Force",
+    "  if (Test-Path $bakAsar) { Remove-Item $bakAsar -Force -ErrorAction SilentlyContinue }",
+    "  if (Test-Path $bakUi) { Remove-Item $bakUi -Recurse -Force -ErrorAction SilentlyContinue }",
+    "  Set-Content -Path $logPath -Value ('OK ' + (Get-Date -Format o)) -Encoding utf8",
+    "} catch {",
+    "  Set-Content -Path $logPath -Value ('ERR ' + $_.Exception.Message) -Encoding utf8",
+    "  try { if (Test-Path $bakAsar) { Copy-Item $bakAsar $targetAsar -Force } } catch {}",
+    "  try { if (Test-Path $bakUi) { if (Test-Path $targetUi) { Remove-Item $targetUi -Recurse -Force }; Move-Item $bakUi $targetUi -Force } } catch {}",
+    "} finally {",
+    "  Start-Process -FilePath $exePath",
+    "  Start-Sleep -Milliseconds 600",
+    "  try { Remove-Item $workDir -Recurse -Force -ErrorAction SilentlyContinue } catch {}",
+    "}"
+  ].join('\r\n');
+
+  const vbsScript = `Set sh = CreateObject("WScript.Shell")\r\nsh.Run "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File """ & "${psPath.replace(/"/g, '""')}" & """", 0, False\r\n`;
+  // Türkçe kullanıcı adı / klasör yollarını korumak için PS1 UTF-8 BOM, VBS UTF-16LE BOM olarak yazılır
+  fs.writeFileSync(psPath, '\uFEFF' + psScript, 'utf8');
+  fs.writeFileSync(vbsPath, '\uFEFF' + vbsScript, 'utf16le');
+
+  notifyUpdater({ type: 'ready', percent: 100, message: 'Mini yama doğrulandı! Uygulama 2 saniye içinde güncellenip yeniden açılacak…' });
+  const child = spawn('wscript.exe', [vbsPath], { detached: true, stdio: 'ignore', windowsHide: true });
+  child.unref();
+  setTimeout(() => { cleanShutdownAndExit(); }, 250);
+  return { launched: true, mode: 'patch', sha256: actualSha };
+}
+
+async function downloadAndInstallRelease(reqInfo) {
+  const info = (reqInfo && (reqInfo.patchUrl || reqInfo.downloadUrl)) ? reqInfo : (latestUpdateCache || await checkLatestRelease());
+  if (!info || (!info.patchUrl && !info.downloadUrl)) {
+    throw new Error('İndirilecek geçerli güncelleme paketi bulunamadı.');
+  }
+
+  // 1. Öncelik: Kurulu uygulamada ~1-2 MB Akıllı Mini Yama (2 saniyede günceller ve yeniden başlatır)
+  if (info.patchUrl && /^https:\/\//i.test(info.patchUrl) && canHotPatch()) {
+    const patchRes = await tryHotPatchInstall(info);
+    if (patchRes && patchRes.launched) return patchRes;
+    notifyUpdater({ type: 'progress', percent: 2, message: 'Tam kurulum paketi gerekiyor; indiriliyor…' });
+  }
+
+  // 2. Yedek / İlk Kurulum veya Motor Değişikliği: Tam Setup.exe
+  if (!info.downloadUrl || !/^https:\/\//i.test(info.downloadUrl)) {
+    throw new Error('İndirilecek kurulum paketi bulunamadı.');
+  }
+  const targetName = (info.assetName || `DersMatrix-Ultimate-${info.latestVersion}-Setup.exe`).replace(/[^a-zA-Z0-9._-]/g, '');
+  const destPath = path.join(os.tmpdir(), targetName);
+
+  const { actualSha } = await downloadAndVerifyAsset({
+    url: info.downloadUrl,
+    destPath,
+    assetName: info.assetName || targetName,
+    sha256Url: info.sha256Url,
+    totalHint: info.assetSize,
+    label: 'Kurulum paketi indiriliyor'
+  });
 
   notifyUpdater({ type: 'ready', percent: 100, message: 'Doğrulandı! Kurulum sihirbazı başlatılıyor…' });
-  // Windows'ta terminal penceresi açmadan ve cmd.exe tırnak kaçış hatası olmadan kurulum sihirbazını doğrudan başlat
   if (process.platform === 'win32') {
     const openErr = await shell.openPath(destPath);
     if (openErr) {
@@ -304,7 +440,7 @@ async function downloadAndInstallRelease(reqInfo) {
     child.unref();
   }
   setTimeout(() => { cleanShutdownAndExit(); }, 600);
-  return { launched: true, installerPath: destPath, sha256: actualSha };
+  return { launched: true, mode: 'full', installerPath: destPath, sha256: actualSha };
 }
 
 /* ---------- Gerçek PDF Üretimi (Chromium printToPDF) ve Doğrudan Yazdırma ---------- */

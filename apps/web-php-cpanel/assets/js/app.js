@@ -213,7 +213,7 @@
     $('#mX').addEventListener('click', () => { M.innerHTML = ''; });
   }
 
-  const APP_VER = (bridge && bridge.appVersion) || '2.6.1';
+  const APP_VER = (bridge && bridge.appVersion) || '2.7.0';
   let updateInfo = null;
   let updateProgress = null;
   const isMember = () => Boolean(authUser && (authUser.loggedIn || authUser.entitlementValid));
@@ -273,6 +273,13 @@
     browserPrintHtml(html);
   }
 
+  function fmtUpdateSize(upd) {
+    if (!upd) return '';
+    const bytes = upd.supportsPatch && upd.patchSize ? upd.patchSize : upd.assetSize;
+    if (!bytes) return '';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
   function renderUpdateBanner() {
     const b = $('#banner');
     if (!b) return;
@@ -281,7 +288,9 @@
       return;
     }
     if (updateInfo && updateInfo.updateAvailable) {
-      b.innerHTML = `<div class="upd-banner"><span>Yeni sürüm hazır: <b>v${esc(updateInfo.latestVersion)}</b> (Mevcut: v${esc(APP_VER)})</span><div class="row"><button class="btn sm pri" data-act="installUpdate">Şimdi Güncelle ve Kur</button><button class="btn sm ghost" data-act="dismissUpdate">Sonra</button></div></div>`;
+      const sz = fmtUpdateSize(updateInfo);
+      const modeLbl = updateInfo.supportsPatch ? `Hızlı Mini Yama${sz ? ' · ' + sz : ''}` : (sz ? `Tam Kurulum · ${sz}` : '');
+      b.innerHTML = `<div class="upd-banner"><span>Yeni sürüm hazır: <b>v${esc(updateInfo.latestVersion)}</b>${modeLbl ? ` <span class="pill ok">${esc(modeLbl)}</span>` : ''} (Mevcut: v${esc(APP_VER)})</span><div class="row"><button class="btn sm pri" data-act="installUpdate">${updateInfo.supportsPatch ? 'Hızlı Güncelle' : 'Şimdi Güncelle ve Kur'}</button><button class="btn sm ghost" data-act="dismissUpdate">Sonra</button></div></div>`;
     }
   }
 
@@ -2023,12 +2032,12 @@
             <tr><td>Uygulama Sürümü</td><td><b>v${esc(APP_VER)}</b></td></tr>
             <tr><td>Çalışma Ortamı</td><td>${bridge ? 'Windows Masaüstü Uygulaması' : webApi ? 'Web Uygulaması' : 'Tarayıcı Önizleme'}</td></tr>
             ${info ? `<tr><td>İşlemci / Bellek</td><td>${info.cpus} çekirdek · ${info.freeMemGB}/${info.totalMemGB} GB RAM</td></tr>` : ''}
-            <tr><td>Güncelleme Durumu</td><td>${updateProgress ? esc(updateProgress.message) : upd ? (upd.updateAvailable ? `<span class="pill ok">Yeni sürüm hazır: v${esc(upd.latestVersion)}</span>` : (upd.error ? `<span class="small muted">${esc(upd.error)}</span>` : `<span class="pill ok">Güncel (v${esc(upd.latestVersion || APP_VER)})</span>`)) : '<span class="small muted">Henüz kontrol edilmedi</span>'}</td></tr>
+            <tr><td>Güncelleme Durumu</td><td>${updateProgress ? esc(updateProgress.message) : upd ? (upd.updateAvailable ? `<span class="pill ok">Yeni sürüm hazır: v${esc(upd.latestVersion)}${fmtUpdateSize(upd) ? ` (${upd.supportsPatch ? 'Hızlı Mini Yama · ' : ''}${esc(fmtUpdateSize(upd))})` : ''}</span>` : (upd.error ? `<span class="small muted">${esc(upd.error)}</span>` : `<span class="pill ok">Güncel (v${esc(upd.latestVersion || APP_VER)})</span>`)) : '<span class="small muted">Henüz kontrol edilmedi</span>'}</td></tr>
           </tbody></table>
           ${updateProgress ? `<div class="bar" style="margin-top:10px"><i style="width:${updateProgress.percent || 0}%;background:var(--ok)"></i></div>` : ''}
           <div class="row" style="margin-top:12px">
             ${bridge ? `<button class="btn" data-act="checkUpdate" ${updateProgress ? 'disabled' : ''}>Güncellemeleri Denetle</button>` : ''}
-            ${bridge && upd && upd.updateAvailable ? `<button class="btn pri" data-act="installUpdate" ${updateProgress ? 'disabled' : ''}>v${esc(upd.latestVersion)} İndir ve Kur</button>` : ''}
+            ${bridge && upd && upd.updateAvailable ? `<button class="btn pri" data-act="installUpdate" ${updateProgress ? 'disabled' : ''}>v${esc(upd.latestVersion)} ${upd.supportsPatch ? 'Hızlı Güncelle' : 'İndir ve Kur'}${fmtUpdateSize(upd) ? ` (${esc(fmtUpdateSize(upd))})` : ''}</button>` : ''}
             <a class="btn sm ghost" href="${EP.EVRAKPLUS_SITE_URL}" target="_blank" rel="noopener">evrakplus.com</a>
           </div>
         </div>

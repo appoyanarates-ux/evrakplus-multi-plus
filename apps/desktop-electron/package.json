@@ -1,6 +1,6 @@
 {
   "name": "dersmatrix-ultimate",
-  "version": "2.6.1",
+  "version": "2.7.0",
   "description": "DersMatrix Ultimate by EvrakPlus — Windows 64-bit Electron Masaüstü Uygulaması",
   "type": "module",
   "main": "./src/main.js",

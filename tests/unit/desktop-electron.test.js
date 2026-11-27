@@ -119,6 +119,10 @@ test('Electron gömülü motor yolları ve electron-builder ASAR-dışı güvenl
   assert.ok(mainSrc.includes("ipcMain.handle('savedPlans:delete'"));
   assert.ok(mainSrc.includes('await shell.openPath(destPath)'), 'Güncelleme kurulumu terminal açmadan shell.openPath ile başlamalı');
   assert.equal(mainSrc.includes('ping -n 2 127.0.0.1'), false, 'Bozuk cmd.exe ping/start başlatıcısı olmamalı');
+  assert.ok(mainSrc.includes('async function tryHotPatchInstall'), 'Akıllı mini yama uygulayıcı tanımlı olmalı');
+  assert.ok(mainSrc.includes('extractZipSafe(zipPath, unpackedDir)'), 'Mini yama güvenli Node ZIP çıkarıcıyı kullanmalı');
+  assert.ok(mainSrc.includes('function canHotPatch()'), 'Yazılabilirlik ve paket durumu kontrolü olmalı');
+  assert.ok(mainSrc.includes('run-hidden.vbs'), 'Mini yama gizli VBS başlatıcı ile terminal penceresi açmamalı');
   assert.ok(mainSrc.includes('show: true') && mainSrc.includes('parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined'));
   assert.ok(mainSrc.includes('win.webContents.print(') && mainSrc.includes('silent: false'));
   assert.ok(mainSrc.includes('Menu.setApplicationMenu(null)') && mainSrc.includes('mainWindow.removeMenu()'));

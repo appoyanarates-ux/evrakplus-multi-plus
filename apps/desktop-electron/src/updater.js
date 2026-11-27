@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
 
 export const DEFAULT_RELEASE_API = 'https://api.github.com/repos/appoyanarates-ux/evrakplus-multi-plus/releases/latest';
 const TRUSTED_UPDATE_HOSTS = new Set(['api.github.com', 'github.com', 'objects.githubusercontent.com', 'www.evrakplus.com']);
@@ -8,16 +9,88 @@ const TRUSTED_UPDATE_HOSTS = new Set(['api.github.com', 'github.com', 'objects.g
 export function detectUpdateStrategy(assets = []) {
   const list = Array.isArray(assets) ? assets : [];
   const setupAsset = list.find(a => /setup.*\.exe$/i.test(a.name || '')) || null;
+  const patchAsset = list.find(a => /patch.*\.zip$/i.test(a.name || '')) || null;
   const blockmapAsset = list.find(a => /\.exe\.blockmap$/i.test(a.name || '')) || null;
   const latestYmlAsset = list.find(a => /^latest\.yml$/i.test(a.name || '')) || null;
   const shaAsset = list.find(a => /sha256/i.test(a.name || '')) || null;
   return {
+    supportsPatch: Boolean(patchAsset),
     supportsDelta: Boolean(setupAsset && blockmapAsset),
+    patchAsset,
     setupAsset,
     blockmapAsset,
     latestYmlAsset,
     shaAsset
   };
+}
+
+/**
+ * Sıfır dış bağımlılıklı güvenli ZIP çıkarıcı (Store=0 & Deflate=8, Zip-Slip korumalı).
+ * Harici PowerShell/terminal açmadan mini yama paketini doğrudan Node içinde açar.
+ */
+export function extractZipSafe(zipPath, destDir) {
+  const buf = fs.readFileSync(zipPath);
+  const absDest = path.resolve(destDir);
+  fs.mkdirSync(absDest, { recursive: true });
+
+  // End of Central Directory (EOCD: 0x06054b50) konumunu sondan ara
+  let eocdOff = -1;
+  const minOff = Math.max(0, buf.length - 65557);
+  for (let i = buf.length - 22; i >= minOff; i--) {
+    if (buf.readUInt32LE(i) === 0x06054b50) {
+      eocdOff = i;
+      break;
+    }
+  }
+  if (eocdOff < 0) throw new Error('Geçersiz ZIP arşivi (EOCD bulunamadı).');
+
+  const totalEntries = buf.readUInt16LE(eocdOff + 10);
+  const cdOffset = buf.readUInt32LE(eocdOff + 16);
+  let ptr = cdOffset;
+  const extracted = [];
+
+  for (let idx = 0; idx < totalEntries; idx++) {
+    if (ptr + 46 > buf.length || buf.readUInt32LE(ptr) !== 0x02014b50) {
+      throw new Error('Geçersiz ZIP merkezi dizin kaydı.');
+    }
+    const method = buf.readUInt16LE(ptr + 10);
+    const compSize = buf.readUInt32LE(ptr + 20);
+    const nameLen = buf.readUInt16LE(ptr + 28);
+    const extraLen = buf.readUInt16LE(ptr + 30);
+    const commentLen = buf.readUInt16LE(ptr + 32);
+    const localHeaderOff = buf.readUInt32LE(ptr + 42);
+    const rawName = buf.subarray(ptr + 46, ptr + 46 + nameLen).toString('utf8');
+    ptr += 46 + nameLen + extraLen + commentLen;
+
+    const cleanRel = rawName.replace(/\\/g, '/').replace(/^\/+/, '');
+    if (!cleanRel || cleanRel.endsWith('/')) continue;
+    const outPath = path.resolve(absDest, cleanRel);
+    if (!outPath.startsWith(absDest + path.sep) && outPath !== absDest) {
+      throw new Error(`Güvenlik ihlali: geçersiz arşiv yolu (${rawName})`);
+    }
+
+    if (localHeaderOff + 30 > buf.length || buf.readUInt32LE(localHeaderOff) !== 0x04034b50) {
+      throw new Error(`Geçersiz yerel ZIP başlığı (${rawName})`);
+    }
+    const lhNameLen = buf.readUInt16LE(localHeaderOff + 26);
+    const lhExtraLen = buf.readUInt16LE(localHeaderOff + 28);
+    const dataStart = localHeaderOff + 30 + lhNameLen + lhExtraLen;
+    const compData = buf.subarray(dataStart, dataStart + compSize);
+
+    let fileData;
+    if (method === 0) {
+      fileData = compData;
+    } else if (method === 8) {
+      fileData = zlib.inflateRawSync(compData);
+    } else {
+      throw new Error(`Desteklenmeyen ZIP sıkıştırma yöntemi: ${method}`);
+    }
+
+    fs.mkdirSync(path.dirname(outPath), { recursive: true });
+    fs.writeFileSync(outPath, fileData);
+    extracted.push(cleanRel);
+  }
+  return extracted;
 }
 
 export function isTrustedHttpsUrl(rawUrl) {
