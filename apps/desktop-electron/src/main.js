@@ -10,7 +10,7 @@ import { resolveEmbeddedPaths } from './engine-paths.js';
 import { extractZipSafe } from './updater.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const APP_VERSION = '2.7.1';
+export const APP_VERSION = '2.7.2';
 export const APP_NAME = 'DersMatrix Ultimate';
 
 async function loadMultiSolver() {
@@ -188,11 +188,15 @@ function notifyUpdater(payload) {
 
 function canHotPatch() {
   if (process.platform !== 'win32' || !app || !app.isPackaged || !process.resourcesPath) return false;
+  const prevNoAsar = process.noAsar;
+  process.noAsar = true;
   try {
     fs.accessSync(process.resourcesPath, fs.constants.W_OK);
     return fs.existsSync(path.join(process.resourcesPath, 'app.asar'));
   } catch {
     return false;
+  } finally {
+    process.noAsar = prevNoAsar;
   }
 }
 
@@ -323,11 +327,21 @@ async function tryHotPatchInstall(info) {
   extractZipSafe(zipPath, unpackedDir);
 
   const manifestPath = path.join(unpackedDir, 'manifest.json');
-  const newAsar = path.join(unpackedDir, 'app.asar');
+  const newAsarBin = path.join(unpackedDir, 'app.asar.bin');
+  const newAsarLegacy = path.join(unpackedDir, 'app.asar');
   const newUiDir = path.join(unpackedDir, 'ui-shared', 'public');
-  if (!fs.existsSync(manifestPath) || !fs.existsSync(newAsar) || !fs.existsSync(path.join(newUiDir, 'index.html'))) {
-    try { fs.rmSync(workDir, { recursive: true, force: true }); } catch {}
-    return { fallbackToFull: true, reason: 'INCOMPLETE_PATCH' };
+  let newAsar = '';
+  const prevNoAsar = process.noAsar;
+  process.noAsar = true;
+  try {
+    if (fs.existsSync(newAsarBin)) newAsar = newAsarBin;
+    else if (fs.existsSync(newAsarLegacy)) newAsar = newAsarLegacy;
+    if (!fs.existsSync(manifestPath) || !newAsar || !fs.existsSync(path.join(newUiDir, 'index.html'))) {
+      try { fs.rmSync(workDir, { recursive: true, force: true }); } catch {}
+      return { fallbackToFull: true, reason: 'INCOMPLETE_PATCH' };
+    }
+  } finally {
+    process.noAsar = prevNoAsar;
   }
 
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
@@ -362,7 +376,7 @@ async function tryHotPatchInstall(info) {
     "  if (Test-Path $bakAsar) { Remove-Item $bakAsar -Force -ErrorAction SilentlyContinue }",
     "  if (Test-Path $bakUi) { Remove-Item $bakUi -Recurse -Force -ErrorAction SilentlyContinue }",
     "  $copied = $false",
-    "  for ($i = 0; $i -lt 16; $i++) {",
+    "  for ($i = 0; $i -lt 25; $i++) {",
     "    try {",
     "      if (Test-Path $targetAsar) { Copy-Item $targetAsar $bakAsar -Force }",
     "      Copy-Item $newAsar $targetAsar -Force",

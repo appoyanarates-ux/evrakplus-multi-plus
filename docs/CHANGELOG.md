@@ -1,5 +1,11 @@
 # DersMatrix Ultimate (by EvrakPlus) — Değişiklik Geçmişi (CHANGELOG)
 
+## [2.7.2] - 2026-11-27
+
+### Hata Düzeltmesi (Akıllı Mini Yama — Electron ASAR Koruması)
+- **Mini Yama `Invalid package ...\app.asar` Hatası Kesin Çözüldü**: Electron ana sürecindeki sanal `.asar` dosya sistemi çakışması, yama içi paket adının `app.asar.bin` olarak taşınması ve `extractZipSafe` / `canHotPatch` / `tryHotPatchInstall` içinde `process.noAsar = true` koruması eklenerek giderildi; gerçek Electron 34.5.8 ana sürecinde doğrulandı.
+- **v2.7.0 Kullanıcıları için Sorunsuz Geçiş**: `v2.7.0` kurulu sistemlerde `Hızlı Güncelle` tıklandığında hata vermeden otomatik olarak `v2.7.2` kurulumuna geçer; `v2.7.2` kurulduktan sonraki tüm sürümler (`v2.7.3`, `v2.8.0`…) hatasız biçimde ~1.2 MB mini yama ile ~2 saniyede güncellenir.
+
 ## [2.7.1] - 2026-11-27
 
 ### 16 Menü Tasarım ve Kullanışlılık (UX) Cilası *(İlk ~1.2 MB Akıllı Mini Yama!)*

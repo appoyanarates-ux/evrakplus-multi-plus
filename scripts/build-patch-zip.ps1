@@ -30,7 +30,8 @@ $zipPath = Join-Path $OutDir "DersMatrix-Patch-$Version.zip"
 try {
   New-Item -ItemType Directory -Path (Join-Path $stageDir "ui-shared\public") -Force | Out-Null
 
-  Copy-Item -Path $asarPath -Destination (Join-Path $stageDir "app.asar") -Force
+  # Electron'un .asar sanal dosya sistemi cakismasini onlemek icin yama icinde app.asar.bin olarak saklanir
+  Copy-Item -Path $asarPath -Destination (Join-Path $stageDir "app.asar.bin") -Force
   Copy-Item -Path (Join-Path $uiPublicDir "*") -Destination (Join-Path $stageDir "ui-shared\public") -Recurse -Force
 
   $manifest = [ordered]@{
