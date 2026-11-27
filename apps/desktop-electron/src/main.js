@@ -10,7 +10,7 @@ import { resolveEmbeddedPaths } from './engine-paths.js';
 import { extractZipSafe } from './updater.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const APP_VERSION = '2.7.3';
+export const APP_VERSION = '2.7.4';
 export const APP_NAME = 'DersMatrix Ultimate';
 
 async function loadMultiSolver() {
@@ -366,8 +366,10 @@ async function tryHotPatchInstall(info) {
     `$exePath = '${psEsc(exePath)}'`,
     `$workDir = '${psEsc(workDir)}'`,
     `$logPath = '${psEsc(logPath)}'`,
-    "try { Wait-Process -Id $appPid -Timeout 12 -ErrorAction SilentlyContinue } catch {}",
-    "Start-Sleep -Milliseconds 400",
+    "try { Wait-Process -Id $appPid -Timeout 4 -ErrorAction SilentlyContinue } catch {}",
+    "$exeName = [System.IO.Path]::GetFileNameWithoutExtension($exePath)",
+    "try { Get-Process -Name $exeName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue } catch {}",
+    "Start-Sleep -Milliseconds 600",
     "$targetAsar = Join-Path $resDir 'app.asar'",
     "$bakAsar = Join-Path $resDir 'app.asar.bak'",
     "$targetUi = Join-Path $resDir 'ui-shared\\public'",
@@ -517,18 +519,56 @@ async function exportHtmlToPdf(opts) {
   }
 }
 
-async function printHtmlDirect(opts) {
-  if (!opts || typeof opts.html !== 'string' || !opts.html.trim()) {
-    throw new Error('Yazdırılacak içerik boş.');
-  }
-  const paperSize = opts.paperSize === 'A3' ? 'A3' : 'A4';
-  const landscape = Boolean(opts.landscape);
-  const tmpHtml = path.join(os.tmpdir(), `dersmatrix-print-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.html`);
-  fs.writeFileSync(tmpHtml, opts.html, 'utf8');
-  let win = null;
+let activePrintJob = null;
+
+function finishActivePrintJob(payload) {
+  const job = activePrintJob;
+  if (!job) return;
+  activePrintJob = null;
   try {
-    win = new BrowserWindow({
-      show: true,
+    if (job.win && !job.win.isDestroyed()) job.win.destroy();
+  } catch {}
+  try {
+    if (typeof job.resolve === 'function') job.resolve(payload);
+  } catch {}
+}
+
+async function executePrintPreviewJob(req = {}) {
+  const job = activePrintJob;
+  if (!job) return { ok: false, error: 'Aktif yazdırma işi bulunamadı.' };
+
+  const deviceName = String(req.deviceName || '');
+  const landscape = Boolean(req.landscape);
+  const paperSize = req.paperSize === 'A3' ? 'A3' : 'A4';
+  const copies = Math.max(1, Math.min(99, parseInt(req.copies, 10) || 1));
+  const color = req.color !== false;
+  const printBackground = req.printBackground !== false;
+  const useSystemDialog = Boolean(req.useSystemDialog);
+
+  if (deviceName === '__PDF__') {
+    const res = await exportHtmlToPdf({
+      html: job.html,
+      defaultFilename: (job.title || 'DersMatrix-Program') + '.pdf',
+      landscape,
+      paperSize
+    });
+    if (res && res.ok) {
+      finishActivePrintJob({ ok: true, savedPdf: true, filePath: res.filePath });
+      return { ok: true, savedPdf: true };
+    }
+    return { ok: false, canceled: Boolean(res && res.canceled) };
+  }
+
+  let pWin = null;
+  let tmpHtml = '';
+  try {
+    const pageOverride = `<style>@page{size:${paperSize} ${landscape ? 'landscape' : 'portrait'}!important;margin:${landscape ? '6mm' : '8mm'}!important}</style>`;
+    const finalHtml = job.html.includes('</head>') ? job.html.replace('</head>', pageOverride + '</head>') : pageOverride + job.html;
+    tmpHtml = path.join(os.tmpdir(), `dersmatrix-print-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.html`);
+    fs.writeFileSync(tmpHtml, finalHtml, 'utf8');
+
+    pWin = new BrowserWindow({
+      show: useSystemDialog,
       title: 'Yazdır — DersMatrix Ultimate',
       icon: resolveAppIcon(),
       width: landscape ? 1120 : 860,
@@ -542,58 +582,112 @@ async function printHtmlDirect(opts) {
         javascript: true
       }
     });
-    win.removeMenu();
-    await win.loadFile(tmpHtml);
-    await new Promise(r => setTimeout(r, 250));
-    if (!win.isDestroyed()) {
-      win.show();
-      win.focus();
-    }
+    pWin.removeMenu();
+    await pWin.loadFile(tmpHtml);
+    await new Promise(r => setTimeout(r, 220));
+    if (useSystemDialog && !pWin.isDestroyed()) pWin.focus();
 
-    const result = await new Promise(resolve => {
+    const printRes = await new Promise(resolve => {
       let done = false;
-      const finish = payload => {
-        if (done) return;
-        done = true;
-        resolve(payload);
-      };
-      win.once('closed', () => finish({ ok: false, canceled: true }));
+      const doneOnce = payload => { if (!done) { done = true; resolve(payload); } };
+      pWin.once('closed', () => doneOnce({ ok: false, canceled: true }));
       try {
-        win.webContents.print({
-          silent: false,
-          printBackground: true,
+        pWin.webContents.print({
+          silent: !useSystemDialog,
+          printBackground,
+          deviceName: deviceName || undefined,
+          copies,
+          color,
           pageSize: paperSize,
           landscape
         }, (success, failureReason) => {
-          finish({ ok: Boolean(success), error: failureReason || '' });
+          doneOnce({ ok: Boolean(success), error: failureReason || '' });
         });
       } catch (err) {
-        finish({ ok: false, error: err && err.message ? err.message : String(err) });
+        doneOnce({ ok: false, error: err && err.message ? err.message : String(err) });
       }
     });
 
-    // Olağan dışı yazıcı sürücüsü hatasında PDF önizleme yedeği
-    if (!result.ok && !result.canceled && result.error && !/cancel/i.test(result.error) && !win.isDestroyed()) {
-      try {
-        const pdfBuf = await win.webContents.printToPDF({
-          printBackground: true,
-          preferCSSPageSize: true,
-          landscape,
-          pageSize: paperSize,
-          margins: { top: 0.25, bottom: 0.25, left: 0.25, right: 0.25 }
-        });
-        const tmpPdf = path.join(os.tmpdir(), `DersMatrix-Yazdir-${Date.now()}.pdf`);
-        fs.writeFileSync(tmpPdf, pdfBuf);
-        await shell.openPath(tmpPdf);
-        return { ok: true, fallbackPdf: true, filePath: tmpPdf };
-      } catch {}
+    if (printRes.ok) {
+      finishActivePrintJob({ ok: true, printer: deviceName });
+      return { ok: true };
     }
-
-    return result;
+    return {
+      ok: false,
+      canceled: Boolean(printRes.canceled || /cancel/i.test(printRes.error || '')),
+      error: printRes.error || 'Yazdırma tamamlanamadı.'
+    };
   } finally {
-    try { if (win && !win.isDestroyed()) win.destroy(); } catch {}
+    try { if (pWin && !pWin.isDestroyed()) pWin.destroy(); } catch {}
     try { if (tmpHtml && fs.existsSync(tmpHtml)) fs.unlinkSync(tmpHtml); } catch {}
   }
+}
+
+async function printHtmlDirect(opts) {
+  if (!opts || typeof opts.html !== 'string' || !opts.html.trim()) {
+    throw new Error('Yazdırılacak içerik boş.');
+  }
+  if (activePrintJob) {
+    finishActivePrintJob({ ok: false, canceled: true });
+  }
+
+  let printers = [];
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      printers = await mainWindow.webContents.getPrintersAsync();
+    }
+  } catch {
+    printers = [];
+  }
+
+  const paperSize = opts.paperSize === 'A3' ? 'A3' : 'A4';
+  const landscape = Boolean(opts.landscape);
+  const title = String(opts.title || 'DersMatrix Belge');
+
+  return new Promise(resolve => {
+    const win = new BrowserWindow({
+      show: true,
+      title: `Yazdır — ${title}`,
+      icon: resolveAppIcon(),
+      width: 1180,
+      height: 780,
+      minWidth: 880,
+      minHeight: 580,
+      autoHideMenuBar: true,
+      webPreferences: {
+        preload: path.join(__dirname, 'print-preview-preload.cjs'),
+        sandbox: true,
+        contextIsolation: true,
+        nodeIntegration: false,
+        webSecurity: true
+      }
+    });
+    win.removeMenu();
+
+    activePrintJob = {
+      html: opts.html,
+      title,
+      landscape,
+      paperSize,
+      printers: printers.map(p => ({
+        name: p.name,
+        displayName: p.displayName || p.name,
+        isDefault: Boolean(p.isDefault)
+      })),
+      win,
+      resolve
+    };
+
+    win.on('closed', () => {
+      if (activePrintJob && activePrintJob.win === win) {
+        finishActivePrintJob({ ok: false, canceled: true });
+      }
+    });
+
+    win.loadFile(path.join(__dirname, 'print-preview.html')).catch(err => {
+      finishActivePrintJob({ ok: false, error: err && err.message ? err.message : String(err) });
+    });
+  });
 }
 
 async function savePngBatch(opts = {}) {
@@ -780,6 +874,16 @@ function registerIpcHandlers() {
   ipcMain.handle('updater:downloadAndInstall', (_ev, info) => downloadAndInstallRelease(info));
   ipcMain.handle('export:pdf', (_ev, opts) => exportHtmlToPdf(opts));
   ipcMain.handle('export:print', (_ev, opts) => printHtmlDirect(opts));
+  ipcMain.handle('printPreview:getJob', () => {
+    if (!activePrintJob) return null;
+    const { html, title, landscape, paperSize, printers } = activePrintJob;
+    return { html, title, landscape, paperSize, printers };
+  });
+  ipcMain.handle('printPreview:execute', (_ev, req) => executePrintPreviewJob(req));
+  ipcMain.handle('printPreview:cancel', () => {
+    finishActivePrintJob({ ok: false, canceled: true });
+    return true;
+  });
   ipcMain.handle('export:savePngBatch', (_ev, opts) => savePngBatch(opts));
   ipcMain.handle('savedPlans:list', (_ev, projectId) => {
     if (typeof projectId !== 'string' || projectId.length > 120) return [];

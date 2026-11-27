@@ -1,5 +1,11 @@
 # DersMatrix Ultimate (by EvrakPlus) — Değişiklik Geçmişi (CHANGELOG)
 
+## [2.7.4] - 2026-11-28
+
+### Modern İki Panelli Yazdır Önizleme Penceresi + Mini Yama Kilit Düzeltmesi
+- **Modern Yazdır & Önizleme Penceresi (`print-preview.html`)**: `Yazdır` düğmesine basıldığında artık Chrome/Edge benzeri iki panelli modern yazdırma ekranı açılır — solda yakınlaştırılabilir canlı belge önizlemesi, sağda bilgisayardaki tüm gerçek yazıcıların listesi (`Hedef`), `PDF olarak kaydet`, `Kopya`, `Düzen (Dikey/Yatay)`, `Kağıt boyutu (A4/A3)`, `Renk (Renkli/Siyah-Beyaz)`, `Daha fazla ayar` ve `Yazdır / İptal` düğmeleri yer alır.
+- **Mini Yama `app.asar` Dosya Kilidi Düzeltmesi**: Güncelleme uygulanırken arka planda kalan alt `DersMatrixUltimate.exe` süreçlerinin `app.asar` dosyasını kilitlemesini önlemek için `apply.ps1` artık tüm alt süreçleri temizleyip yamayı atomik olarak uygular.
+
 ## [2.7.3] - 2026-11-27
 
 ### Hata Düzeltmesi (Windows Yazdır Düğmesi)
