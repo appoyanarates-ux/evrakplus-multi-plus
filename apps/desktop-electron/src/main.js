@@ -9,7 +9,7 @@ import { SqliteProjectStore } from './sqlite-store.js';
 import { resolveEmbeddedPaths } from './engine-paths.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const APP_VERSION = '2.5.1';
+export const APP_VERSION = '2.5.2';
 export const APP_NAME = 'DersMatrix Ultimate';
 
 async function loadMultiSolver() {
@@ -291,21 +291,19 @@ async function downloadAndInstallRelease(reqInfo) {
     }
   }
 
-  notifyUpdater({ type: 'ready', percent: 100, message: 'Doğrulandı! Uygulama kapatılıp kurulum sihirbazı başlatılıyor…' });
-  // Eski uygulamanın tamamen kapanması için kısa gecikmeyle kurulumu başlat ve hemen çık
+  notifyUpdater({ type: 'ready', percent: 100, message: 'Doğrulandı! Kurulum sihirbazı başlatılıyor…' });
+  // Windows'ta terminal penceresi açmadan ve cmd.exe tırnak kaçış hatası olmadan kurulum sihirbazını doğrudan başlat
   if (process.platform === 'win32') {
-    const safeCmd = `ping -n 2 127.0.0.1 >nul & start "" "${destPath.replace(/"/g, '')}"`;
-    const child = spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', safeCmd], {
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: true
-    });
-    child.unref();
+    const openErr = await shell.openPath(destPath);
+    if (openErr) {
+      const child = spawn(destPath, [], { detached: true, stdio: 'ignore', windowsHide: false });
+      child.unref();
+    }
   } else {
     const child = spawn(destPath, [], { detached: true, stdio: 'ignore' });
     child.unref();
   }
-  setTimeout(() => { cleanShutdownAndExit(); }, 150);
+  setTimeout(() => { cleanShutdownAndExit(); }, 600);
   return { launched: true, installerPath: destPath, sha256: actualSha };
 }
 

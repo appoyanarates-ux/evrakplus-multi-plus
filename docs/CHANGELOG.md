@@ -1,5 +1,10 @@
 # DersMatrix Ultimate (by EvrakPlus) — Değişiklik Geçmişi (CHANGELOG)
 
+## [2.5.2] - 2026-11-27
+
+### Hata Düzeltmesi
+- **Uygulama İçi Otomatik Güncelleme Başlatma Düzeltmesi**: Güncelleme indirildikten sonra `cmd.exe` tırnak kaçış hatası nedeniyle terminal penceresinin anlık açılıp kapanması ve kurulum sihirbazının başlamaması sorunu tamamen giderildi. Kurulum sihirbazı artık terminal açmadan doğrudan `shell.openPath` (Windows `ShellExecute`) ile başlatılır.
+
 ## [2.5.1] - 2026-11-27
 
 ### Arayüz ve Kullanım İyileştirmeleri

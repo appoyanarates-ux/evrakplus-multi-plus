@@ -117,6 +117,8 @@ test('Electron gömülü motor yolları ve electron-builder ASAR-dışı güvenl
   assert.ok(mainSrc.includes("ipcMain.handle('savedPlans:list'"));
   assert.ok(mainSrc.includes("ipcMain.handle('savedPlans:save'"));
   assert.ok(mainSrc.includes("ipcMain.handle('savedPlans:delete'"));
+  assert.ok(mainSrc.includes('await shell.openPath(destPath)'), 'Güncelleme kurulumu terminal açmadan shell.openPath ile başlamalı');
+  assert.equal(mainSrc.includes('ping -n 2 127.0.0.1'), false, 'Bozuk cmd.exe ping/start başlatıcısı olmamalı');
   assert.ok(mainSrc.includes('show: true') && mainSrc.includes('parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined'));
   assert.ok(mainSrc.includes('win.webContents.print(') && mainSrc.includes('silent: false'));
   assert.ok(mainSrc.includes('Menu.setApplicationMenu(null)') && mainSrc.includes('mainWindow.removeMenu()'));

@@ -23,7 +23,7 @@ $csrf = ep_csrf_token();
   <link rel="icon" type="image/png" href="./assets/icons/dersmatrix-icon.png">
   <link rel="apple-touch-icon" href="./assets/icons/dersmatrix-icon.png">
   <meta name="csrf-token" content="<?= htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8') ?>">
-  <title>DersMatrix Ultimate · v2.5.1 Web &amp; PWA</title>
+  <title>DersMatrix Ultimate · v2.5.2 Web &amp; PWA</title>
   <link rel="manifest" href="./manifest.json">
   <link rel="stylesheet" href="./assets/css/styles.css">
 </head>
