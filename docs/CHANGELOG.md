@@ -1,5 +1,16 @@
 # DersMatrix Ultimate (by EvrakPlus) — Değişiklik Geçmişi (CHANGELOG)
 
+## [2.7.1] - 2026-11-27
+
+### 16 Menü Tasarım ve Kullanışlılık (UX) Cilası *(İlk ~1.2 MB Akıllı Mini Yama!)*
+- **Sıfır Yatay Taşmalı Kurulum Tabloları (`4. Sınıflar ve Şubeler` & `6. Ders Görevlendirmeleri`)**: Tam gün okullarda gereksiz `Devre` sütunu otomatik gizlendi, `Blok` / `Öğretmen` / `Derslik` sütunları ve sol şube listesi optimize edildi; kesilen `Saat` / `Sil` butonları ve kırpılan açılır kutular tamamen düzeltildi.
+- **Kaydırmasız Tam Sol Menü & Vektör Tema İkonu**: 16 menünün tamamı standart `900 px` ekranda kaydırma çubuğu olmadan tek bakışta görünür hâle getirildi; üst çubuktaki tema düğmesi vektör SVG ay/güneş ikonuna geçirildi.
+- **`3. Öğretmenler` Anlık Arama & 3 Alt Sekme**: Sol öğretmen listesinin tepesine anlık **öğretmen / branş arama kutusu** eklendi; sağ detay paneli **Profil & Nöbet · Müsaitlik Matrisi · Atanan Dersler** sekmelerine bölünerek sayfa uzunluğu üçte bire indirildi.
+- **`9. Haftalık Ders Programları` Hızlı Geçiş (`◀ / ▶`)**: Sınıf, öğretmen ve derslik programları arasında açılır menüyü tekrar açmadan tek tıkla ileri/geri gezme okları eklendi; `Toplu Kilitleme` düğmesi `Dağıtım ve Program` ile tek tipe getirildi.
+- **`10. Analiz ve İstatistikler` Etkileşimli Boş Pencere Rozetleri**: Öğretmen boş pencereleri renkli rozetlerle (`0` yeşil · `1–2` kehribar · `3+` kırmızı) vurgulandı; öğretmen adına tıklayınca doğrudan haftalık programına geçiş ve tek tık `Kalite Raporu / Yazdır` düğmesi eklendi.
+- **`11. Okul Nöbeti` İlk Ekranda Görünen Çizelge & `12. Raporlar` Simetri**: Nöbet ayarları açılır-kapanır özet çubuğuna alınarak nöbet tablosu hemen ekrana taşındı; `Raporlar` ekranındaki Sınıflar / Öğretmenler WhatsApp PNG kutuları simetrik hizalandı ve alttaki gereksiz pasif buton kaldırıldı.
+- **Saf Türkçe Dil & Güncel İçerik Cilası**: `Ana Panel`'de *Program Ön Kontrolü* ve tikli kurulum adımları, `Kural Yönetimi`'nde saf Türkçe öncelik adları, `EvrakPlus Hesabım`'da eski `Excel/CSV` metninin düzeltilmesi, `Sistem` ekranında altyapı kartı ve `Yardım` ekranında eksik tüm kısayollar (`Ctrl+B`, `Ctrl+S`, gün/saat çift tık) + 5 Adımda Hızlı Başlangıç eklendi.
+
 ## [2.7.0] - 2026-11-27
 
 ### Akıllı Mini Yama (~1–2 MB Hızlı Güncelleme Sistemi)

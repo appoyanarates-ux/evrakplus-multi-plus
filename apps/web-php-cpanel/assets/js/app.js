@@ -84,6 +84,8 @@
   const tShort = t => EP.tShort(t);
 
   /* ---------- Tema, Sol Menü, Kayıt, Geçmiş & Geri Al ---------- */
+  const ICON_MOON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+  const ICON_SUN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>';
   function applyTheme(t) {
     const root = document.documentElement;
     if (t === 'light' || t === 'dark') root.setAttribute('data-theme', t);
@@ -91,7 +93,7 @@
     const isDark = t === 'dark' || (t !== 'light' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
     const tb = $('#bToggleTheme');
     if (tb) {
-      tb.textContent = isDark ? '☀️' : '🌙';
+      tb.innerHTML = isDark ? ICON_SUN : ICON_MOON;
       tb.title = isDark ? 'Açık temaya geç' : 'Koyu temaya geç';
     }
   }
@@ -213,7 +215,7 @@
     $('#mX').addEventListener('click', () => { M.innerHTML = ''; });
   }
 
-  const APP_VER = (bridge && bridge.appVersion) || '2.7.0';
+  const APP_VER = (bridge && bridge.appVersion) || '2.7.1';
   let updateInfo = null;
   let updateProgress = null;
   const isMember = () => Boolean(authUser && (authUser.loggedIn || authUser.entitlementValid));
@@ -437,10 +439,10 @@
   function blkSelect(c) {
     const h = +c.hours || 1, e = EP.effCfg(S, c), g = EP.blkCfg(S, c.subj, h);
     const cur = c.bmode === 'auto' ? 'auto' : c.bmode === 'fixed' ? 'f:' + ((c.bpats || [])[0] || '') : 'inherit';
-    const gtxt = g.mode === 'auto' ? 'otomatik' : 'sabit ' + g.pats[0];
-    return `<select data-card="${c.id}" data-f="blk" style="max-width:195px" aria-label="Blok düzeni">
-      <option value="inherit" ${cur === 'inherit' ? 'selected' : ''}>Ders ayarı (${esc(gtxt)})</option>
-      ${EP.minPats(h) > 1 ? `<option value="auto" ${cur === 'auto' ? 'selected' : ''}>Çoklu: en az 2 tip</option>` : ''}
+    const gtxt = g.mode === 'auto' ? 'oto' : g.pats[0];
+    return `<select data-card="${c.id}" data-f="blk" style="width:100%;max-width:142px" aria-label="Blok düzeni">
+      <option value="inherit" ${cur === 'inherit' ? 'selected' : ''}>Varsayılan (${esc(gtxt)})</option>
+      ${EP.minPats(h) > 1 ? `<option value="auto" ${cur === 'auto' ? 'selected' : ''}>Çoklu (2+ tip)</option>` : ''}
       ${EP.partitions(h).map(p => `<option value="f:${p}" ${cur === 'f:' + p ? 'selected' : ''}>Sabit ${p}</option>`).join('')}
     </select>
     ${e.own && e.mode === 'auto' ? `<div style="margin-top:5px">${patChips(e.pats, h, `data-act="cardPat" data-id="${c.id}"`)}</div>` : ''}
@@ -461,17 +463,17 @@
   function cardRow(c, showClass, showAdv) {
     const coOpts = `<option value="">— Yok (Tek öğretmen) —</option>` + S.teachers.filter(t => t.id !== c.teacherId).map(t => `<option value="${t.id}" ${c.coTeacherId === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('');
     const advCell = showAdv ? `<td>
-        <select data-card="${c.id}" data-f="coTeacherId" style="max-width:165px;margin-bottom:4px" title="Bölünmüş / Atölye dersi için 2. eş öğretmen" aria-label="2. Eş öğretmen">${coOpts}</select>
-        <input data-card="${c.id}" data-f="syncGroup" value="${esc(c.syncGroup || '')}" placeholder="Ortak grup (ör. 11-Sec-A)" title="Aynı grup adını taşıyan farklı şubelerin seçmeli dersleri aynı saatte eş zamanlı yerleşir" style="width:165px;min-height:30px;padding:3px 7px;font-size:12px">
+        <select data-card="${c.id}" data-f="coTeacherId" style="width:100%;max-width:155px;margin-bottom:4px" title="Bölünmüş / Atölye dersi için 2. eş öğretmen" aria-label="2. Eş öğretmen">${coOpts}</select>
+        <input data-card="${c.id}" data-f="syncGroup" value="${esc(c.syncGroup || '')}" placeholder="Ortak grup (ör. 11-Sec-A)" title="Aynı grup adını taşıyan farklı şubelerin seçmeli dersleri aynı saatte eş zamanlı yerleşir" style="width:100%;max-width:155px;min-height:30px;padding:3px 7px;font-size:12px">
       </td>` : '';
-    return `<tr>${showClass ? `<td>${esc(cName(c.classId))}</td>` : ''}
-      <td><span class="tag ${colorOf(c.subj)}">${esc(SS(c.subj))}</span> ${esc(SN(c.subj))}${showClass ? `<br><small class="muted">${c.kind === 'secmeli' ? 'Seçmeli' : c.kind === 'ek' ? 'Ek / branş dışı' : 'Zorunlu'}</small>` : ''}${c.syncGroup ? `<br><span class="tag" style="background:var(--okBg);color:var(--ok)">Ortak: ${esc(c.syncGroup)}</span>` : ''}</td>
-      <td class="n"><input type="number" min="1" max="12" data-card="${c.id}" data-f="hours" value="${c.hours}" style="width:56px;padding:0 6px" aria-label="Haftalık saat"></td>
-      <td style="max-width:175px">${blkSelect(c).replace('<select ', '<select style="max-width:168px" ')}</td>
-      <td><select data-card="${c.id}" data-f="teacherId" style="max-width:205px" aria-label="Öğretmen">${tOptions(c)}</select><div style="margin-top:4px">${modeTag(c)}</div></td>
+    return `<tr>${showClass ? `<td style="white-space:nowrap"><b>${esc(cName(c.classId))}</b></td>` : ''}
+      <td style="min-width:130px"><span class="tag ${colorOf(c.subj)}">${esc(SS(c.subj))}</span> ${esc(SN(c.subj))}${showClass ? `<br><small class="muted">${c.kind === 'secmeli' ? 'Seçmeli' : c.kind === 'ek' ? 'Ek / branş dışı' : 'Zorunlu'}</small>` : ''}${c.syncGroup ? `<br><span class="tag" style="background:var(--okBg);color:var(--ok)">Ortak: ${esc(c.syncGroup)}</span>` : ''}</td>
+      <td class="n" style="width:58px"><input type="number" min="1" max="12" data-card="${c.id}" data-f="hours" value="${c.hours}" style="width:52px;padding:0 6px" aria-label="Haftalık saat"></td>
+      <td style="width:148px">${blkSelect(c)}</td>
+      <td style="min-width:180px"><select data-card="${c.id}" data-f="teacherId" style="width:100%;max-width:230px" aria-label="Öğretmen">${tOptions(c)}</select><div style="margin-top:3px">${modeTag(c)}</div></td>
       ${advCell}
-      <td><select data-card="${c.id}" data-f="roomId" style="max-width:110px" aria-label="Derslik"><option value="">Varsayılan</option>${(S.rooms || []).map(r => `<option value="${r.id}" ${c.roomId === r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select></td>
-      <td style="text-align:right"><button class="btn sm ghost" data-act="delCard" data-id="${c.id}">Sil</button></td></tr>`;
+      <td style="width:108px"><select data-card="${c.id}" data-f="roomId" style="width:100%;max-width:104px" aria-label="Derslik"><option value="">Varsayılan</option>${(S.rooms || []).map(r => `<option value="${r.id}" ${c.roomId === r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select></td>
+      <td style="text-align:right;width:48px"><button class="btn sm danger-ghost" data-act="delCard" data-id="${c.id}">Sil</button></td></tr>`;
   }
   const TH_CARD = (cls, adv) => `<thead><tr>${cls ? '<th>Sınıf</th>' : ''}<th>Ders</th><th class="n">Saat</th><th>Blok</th><th>Öğretmen</th>${adv ? '<th>2. Eş Öğretmen / Ortak Blok</th>' : ''}<th>Derslik</th><th></th></tr></thead>`;
 
@@ -487,26 +489,29 @@
     const dutyAssigned = S.teachers.filter(t => !EP.isDutyExempt(S, t) && EP.dutyOf(t).d >= 0).length;
     const dutyExemptCount = S.teachers.filter(t => EP.isDutyExempt(S, t)).length;
     const clubAssigned = S.teachers.filter(t => Boolean(t.kulup)).length;
-    return H('Ana Panel', 'DersMatrix Ultimate — Okulunuzun haftalık ders dağıtım özeti, PASS 0 ön kontrol durumu ve hızlı işlemler.',
-      `<button class="btn pri" data-step="auto_schedule">Dağıtıma Git</button><button class="btn" data-act="demo">Örnek Okul</button><button class="btn" data-act="demoX">Çakışmalı Örnek</button>`) +
+    const steps = [
+      ['school', 'Okul & Zil Ayarları', Boolean(S.school && S.school.name)],
+      ['teachers', 'Öğretmenler', S.teachers.length > 0],
+      ['classes', 'Sınıflar ve Şubeler', S.classes.length > 0],
+      ['assignments', 'Ders Görevlendirmeleri', S.cards.length > 0 && !S.cards.some(c => !c.teacherId)],
+      ['auto_schedule', 'Dağıtım ve Program', tot > 0 && o.un.length === 0],
+      ['reports', 'Resmi Çıktılar', pl > 0]
+    ];
+    return H('Ana Panel', 'DersMatrix Ultimate — Okulunuzun haftalık ders dağıtım özeti, program ön kontrol durumu ve kurulum adımları.',
+      `<button class="btn pri" data-step="auto_schedule">Dağıtıma Git</button><button class="btn" data-step="reports">Resmi Çıktılar</button>`) +
       `<div class="hero-banner"><img src="./assets/dersmatrix-banner.jpg" alt="DersMatrix Ultimate · Profesyonel Haftalık Ders Dağıtım Sistemi by EvrakPlus"></div>
       <div class="kpis">
         <div class="kpi"><small>Şube / Sınıf</small><b>${S.classes.length}</b><span>${(S.rooms || []).length} derslik · ${(S.buildings || []).length} bina</span></div>
         <div class="kpi"><small>Öğretmen</small><b>${S.teachers.length}</b><span>${totHrs} haftalık ders saati</span></div>
         <div class="kpi"><small>Yerleşen Blok</small><b>${pl} / ${tot}</b><span>${o.un.length ? o.un.length + ' yerleşmeyen' : 'Program tam'}</span></div>
-        <div class="kpi"><small>PASS 0 Ön Kontrol</small><b style="color:${errs ? 'var(--err)' : 'var(--ok)'}">${errs ? errs + ' Çakışma' : 'Temiz'}</b><span>${pc.filter(x => x.lvl === 'warn').length} uyarı</span></div>
+        <div class="kpi"><small>Program Ön Kontrolü</small><b style="color:${errs ? 'var(--err)' : 'var(--ok)'}">${errs ? errs + ' Çakışma' : 'Temiz'}</b><span>${pc.filter(x => x.lvl === 'warn').length} uyarı</span></div>
       </div>
       <div class="grid2">
         <div class="card">
-          <h2>Hızlı İşlemler</h2>
-          <p class="small muted" style="margin:6px 0 12px">Çalışma ortamı: <b>${esc(rt)}</b></p>
-          <div class="row">
-            <button class="btn pri" data-step="school">1. Okul &amp; Zil Ayarları</button>
-            <button class="btn" data-step="classes">2. Sınıflar</button>
-            <button class="btn" data-step="teachers">3. Öğretmenler</button>
-            <button class="btn" data-step="assignments">4. Sınıf Dersleri</button>
-            <button class="btn" data-step="auto_schedule">5. Dağıtım ve Program</button>
-            <button class="btn" data-step="reports">6. Resmi Çıktılar</button>
+          <h2>Kurulum Adımları &amp; Hızlı Erişim</h2>
+          <p class="small muted" style="margin:6px 0 12px">Çalışma ortamı: <b>${esc(rt)}</b> · Eksik adımları tamamlayıp dağıtıma geçin.</p>
+          <div class="step-pills">
+            ${steps.map(([st, lb, done]) => `<button class="step-pill ${done ? 'done' : ''}" data-step="${st}"><span class="chk">${done ? '✓' : '·'}</span>${lb}</button>`).join('')}
           </div>
         </div>
         <div class="card">
@@ -520,7 +525,7 @@
           <div class="row" style="margin-top:12px"><button class="btn sm" data-act="goDutyTab">Nöbet ve Kulüp Düzenle</button></div>
         </div>
       </div>
-      <div class="card" style="margin-top:14px"><h2>PASS 0 Ön Kontrol Özeti</h2><div class="diag" style="margin-top:10px">${diagHtml()}</div></div>`;
+      <div class="card" style="margin-top:14px"><h2>Program Ön Kontrol Özeti</h2><div class="diag" style="margin-top:10px">${diagHtml()}</div></div>`;
   }
 
   /* 2. Okul Ayarları */
@@ -584,6 +589,8 @@
         <label class="f">Okul müdürü adı<input data-k="school.mudur" value="${esc(s.mudur || '')}" placeholder="Ad Soyad"></label>
         <label class="f">Müdür yardımcısı adı<input data-k="school.mudurYardimcisi" value="${esc(s.mudurYardimcisi || '')}" placeholder="Ad Soyad"></label>
         <label class="f" style="grid-column:1/-1">Okul türü<select data-k="school.type">${(EP.TYPE_GROUPS || []).map(grp => `<optgroup label="${esc(grp.label)}">${grp.types.filter(k => EP.TYPES[k]).map(k => { const t = EP.TYPES[k]; return `<option value="${k}" ${s.type === k ? 'selected' : ''}>${esc(t.ad)} (${EP.gradeRange(t.grades)} · ${[...new Set(t.total)].join('/')} sa)</option>`; }).join('')}</optgroup>`).join('')}<optgroup label="Özel / Şablonsuz"><option value="" ${!T ? 'selected' : ''}>Diğer / şablonsuz</option></optgroup></select></label>
+      </div>
+      <div class="fields3" style="margin-top:10px">
         <label class="f">Eğitim düzeni<select data-k="school.educationMode"><option value="full_day" ${s.educationMode !== 'dual_shift' ? 'selected' : ''}>Tam gün</option><option value="dual_shift" ${s.educationMode === 'dual_shift' ? 'selected' : ''}>İkili öğretim (Sabahçı / Öğlenci)</option></select></label>
         <label class="f">Gün sayısı<select data-k="school.D">${[5, 6].map(v => `<option ${+s.D === v ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
         <label class="f">Günlük ders sayısı<input type="number" min="1" max="12" data-k="school.P" value="${s.P}"></label>
@@ -597,13 +604,16 @@
         <div class="fields" style="margin-top:10px">
           <label class="f">İlk ders<input type="time" data-k="school.start" value="${esc(s.start)}"></label>
           <label class="f">Ders süresi (dk)<input type="number" data-k="school.len" value="${s.len}"></label>
-          <label class="f">Teneffüs (dk)<input type="number" data-k="school.brk" value="${s.brk}"></label>
-          <label class="f">Öğle arası şu dersten sonra<input type="number" data-k="school.lunchAfter" value="${s.lunchAfter}"></label>
-          <label class="f">Öğle arası (dk)<input type="number" data-k="school.lunchLen" value="${s.lunchLen}"></label>
-          ${s.educationMode === 'dual_shift' ? `
-          <label class="f">Sabahçı ilk ders<input type="time" data-k="school.morningStart" value="${esc(s.morningStart || '07:30')}"></label>
-          <label class="f">Öğlenci ilk ders<input type="time" data-k="school.afternoonStart" value="${esc(s.afternoonStart || '13:00')}"></label>` : ''}
         </div>
+        <div class="fields3" style="margin-top:10px">
+          <label class="f">Teneffüs (dk)<input type="number" data-k="school.brk" value="${s.brk}"></label>
+          <label class="f">Öğle arası (ders sonrası)<input type="number" data-k="school.lunchAfter" value="${s.lunchAfter}"></label>
+          <label class="f">Öğle arası (dk)<input type="number" data-k="school.lunchLen" value="${s.lunchLen}"></label>
+        </div>
+        ${s.educationMode === 'dual_shift' ? `<div class="fields" style="margin-top:10px">
+          <label class="f">Sabahçı ilk ders<input type="time" data-k="school.morningStart" value="${esc(s.morningStart || '07:30')}"></label>
+          <label class="f">Öğlenci ilk ders<input type="time" data-k="school.afternoonStart" value="${esc(s.afternoonStart || '13:00')}"></label>
+        </div>` : ''}
         ${s.educationMode === 'dual_shift' ? `<div class="msg info" style="margin:10px 0 6px"><span class="ic">i</span><div><b>İkili Öğretim Aktif:</b> Sabahçı sınıflar <b>${esc(EP.times(S, 'morning')[0] || '')}</b>, Öğlenci sınıflar <b>${esc(EP.times(S, 'afternoon')[0] || '')}</b> saatinde başlar; sınıf çıktılarında her devrenin kendi zil saati görünür.</div><span></span></div>` : ''}
         <p class="small muted" style="margin:10px 0 6px">Her dersin başlangıç ve bitiş saatini aşağıdan tek tek özelleştirebilirsiniz (program şablonlarında, PDF/Yazdır belgelerinde ve WhatsApp görsellerinde birebir görünür):</p>
         <div style="border:1px solid var(--line);border-radius:10px;padding:6px 8px">
@@ -845,20 +855,38 @@
   function vOgretmen() {
     const L = EP.loads(S);
     const t = S.teachers.find(x => x.id === S.ui.tsel) || S.teachers[0];
+    const tq = (S.ui.tSearchQ || '').toLocaleLowerCase('tr').trim();
     const list = S.teachers.map(x => {
       const o = EP.openOf(S, x).tot, l = L[x.id] || 0, cls = l > o ? 'err' : l === o && l ? 'warn' : 'ok';
       const ak = EP.staffAdminKind(S, x);
       const roleTag = ak === 'mudur' ? ' · Okul Müdürü' : ak === 'mudur_yardimcisi' ? ' · Müdür Yrd.' : ak === 'rehber' ? ' · PDR' : '';
-      return `<div class="tl ${t && t.id === x.id ? 'on' : ''}" data-act="tsel" data-id="${x.id}" data-drop-t="${x.id}"><div><b>${esc(x.name)}</b><small>${esc(x.branch || 'Branş yok')}${roleTag}${(x.extra || []).length ? ' · +' + x.extra.length + ' branş dışı' : ''}</small></div><span class="pill ${cls}">${l}/${o} sa</span></div>`;
+      const q = (x.name + ' ' + (x.branch || '') + roleTag).toLocaleLowerCase('tr');
+      return `<div class="tl tmain-item ${t && t.id === x.id ? 'on' : ''}" data-act="tsel" data-id="${x.id}" data-drop-t="${x.id}" data-q="${esc(q)}" ${tq && !q.includes(tq) ? 'style="display:none"' : ''}><div><b>${esc(x.name)}</b><small>${esc(x.branch || 'Branş yok')}${roleTag}${(x.extra || []).length ? ' · +' + x.extra.length + ' branş dışı' : ''}</small></div><span class="pill ${cls}">${l}/${o} sa</span></div>`;
     }).join('');
     const pl = EP.dutyPlaces(S);
     const tAdmin = t ? EP.staffAdminKind(S, t) : '';
     const tExempt = t ? EP.isDutyExempt(S, t) : false;
+    const ttab = S.ui.ttab || 'profile';
+    const tCardsCnt = t ? S.cards.filter(c => c.teacherId === t.id).length : 0;
+    const closedCnt = t ? Object.values(t.av || {}).filter(v => v === 1).length : 0;
     return H('Öğretmenler ve müsaitlik', 'Branşı, unvan/nöbet muafiyetini, sosyal kulübü, müsaitlik matrisini ve öğretmene atanan dersleri (ekleme, düzenleme, aktarma, takas) buradan yönetin.',
       `<button class="btn pri" data-act="addT">Öğretmen ekle</button><button class="btn" data-act="importTeachers">Excel / e-Okul'dan Aktar</button><button class="btn" data-act="bulkT">Branşa göre eksikleri ekle</button>`) +
-      (S.teachers.length ? `<div class="board" style="grid-template-columns:300px minmax(0,1fr)"><div class="tlist">${list}</div>${t ? `<div class="card">
-        <div class="row" style="justify-content:space-between"><h2>${esc(t.name)}</h2><button class="btn sm ghost" data-act="delT" data-id="${t.id}">Öğretmeni sil</button></div>
-        <div class="fields" style="margin:12px 0">
+      (S.teachers.length ? `<div class="board" style="grid-template-columns:280px minmax(0,1fr)">
+        <div>
+          <input id="tSearchQ" value="${esc(S.ui.tSearchQ || '')}" placeholder="Öğretmen veya branş ara (${S.teachers.length})…" style="width:100%;min-height:36px;margin-bottom:8px;font-size:13.5px">
+          <div class="tlist">${list}</div>
+        </div>
+        ${t ? `<div class="card">
+        <div class="row" style="justify-content:space-between;margin-bottom:10px">
+          <div><h2>${esc(t.name)}</h2><small class="muted">${esc(t.branch || 'Branş yok')} · ${L[t.id] || 0}/${EP.openOf(S, t).tot} saat</small></div>
+          <button class="btn sm danger-ghost" data-act="delT" data-id="${t.id}">Öğretmeni sil</button>
+        </div>
+        <div class="tabs" style="margin-bottom:14px;display:inline-flex">
+          <button data-act="ttab" data-v="profile" class="${ttab === 'profile' ? 'on' : ''}">Profil &amp; Nöbet</button>
+          <button data-act="ttab" data-v="avail" class="${ttab === 'avail' ? 'on' : ''}">Müsaitlik Matrisi${closedCnt ? ` (${closedCnt} kapalı)` : ''}</button>
+          <button data-act="ttab" data-v="courses" class="${ttab === 'courses' ? 'on' : ''}">Atanan Dersler (${tCardsCnt})</button>
+        </div>
+        ${ttab === 'profile' ? `<div class="fields" style="margin:4px 0 12px">
           <label class="f">Ad soyad<input data-t="${t.id}" data-f="name" value="${esc(t.name)}"></label>
           <label class="f">Kısa ad<input data-t="${t.id}" data-f="short" value="${esc(t.short)}" placeholder="${esc(tShort(t))}"></label>
           <label class="f">Branş<select data-t="${t.id}" data-f="branch">${BRANS.map(b => `<option ${t.branch === b ? 'selected' : ''}>${esc(b)}</option>`).join('')}</select></label>
@@ -870,34 +898,33 @@
           ${tExempt ? '' : `<label class="f">Nöbet günü<select data-t="${t.id}" data-f="dutyD"><option value="">—</option>${GUN.slice(0, +S.school.D).map((g, d) => `<option value="${d}" ${EP.dutyOf(t).d === d ? 'selected' : ''}>${g}</option>`).join('')}</select></label>
           <label class="f">Nöbet yeri<select data-t="${t.id}" data-f="dutyP">${pl.map(p => `<option ${(t.dutyP || pl[0]) === p ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select></label>`}
           <label class="f" style="grid-column:span 2">Sosyal kulüp (MEB Listesi)<select data-t="${t.id}" data-f="kulup">${EP.clubOptions(S, t.kulup || '')}</select></label>
-        </div>
-        ${extraBlock(t)}
-        ${matrix('t', t)}
-        ${teacherAssignSection(t, { standalone: false, draggable: true })}
+        </div>${extraBlock(t)}` : ttab === 'avail' ? matrix('t', t) : teacherAssignSection(t, { standalone: false, draggable: true })}
       </div>` : ''}</div>` : '<div class="empty">Henüz öğretmen yok.</div>');
   }
 
   /* 4. Sınıflar ve Şubeler */
   function vSinif() {
     const op = S.ui.openCls, T = EP.typeOf(S), G = T ? T.grades : [5, 6, 7, 8];
+    const showShift = S.school.educationMode === 'dual_shift' || S.classes.some(c => c.shift && c.shift !== 'full');
+    const colSpan = showShift ? 9 : 8;
     return H('Sınıflar ve şubeler', `Şubeleri ekleyin. Toplu eklemede ${T ? esc(T.ad) + ' çizelgesindeki' : 'şablondaki'} zorunlu dersler kendiliğinden eklenir ve öğretmenler otomatik atanır.`,
       `<button class="btn pri" data-act="bulkCls">Toplu sınıf ekle</button><button class="btn" data-act="importClasses">Excel / e-Okul'dan Aktar</button><button class="btn" data-act="addCls">Tek şube ekle</button><button class="btn" data-act="rehAuto">Rehber öğretmenleri dağıt</button>`) +
       `<div class="card" style="display:${S.ui.bulk ? 'block' : 'none'};margin-bottom:16px"><h2>Toplu sınıf ekle</h2><div class="fields" style="margin-top:12px">
         ${G.map(g => `<label class="f">${EP.gradeLabel(g)} şube sayısı<input type="number" min="0" max="20" value="${S.classes.some(c => c.grade === g) ? 0 : 1}" id="bg${g}"></label>`).join('')}
       </div><div class="row" style="margin-top:12px"><button class="btn pri" data-act="bulkGo">Ekle ve zorunlu dersleri oluştur</button><button class="btn ghost" data-act="bulkCls">Vazgeç</button></div></div>` +
-      (S.classes.length ? `<div class="card scroll"><table class="tbl"><thead><tr><th>Şube</th><th class="n">Düzey</th><th>Devre</th><th>Ana Derslik</th><th class="n">Ders/Çizelge</th><th class="n">Açık</th><th>Rehber öğretmen</th><th>Durum</th><th></th></tr></thead><tbody>${S.classes.map(c => {
+      (S.classes.length ? `<div class="card scroll"><table class="tbl tbl-compact"><thead><tr><th>Şube</th><th class="n">Düzey</th>${showShift ? '<th>Devre</th>' : ''}<th>Ana Derslik</th><th class="n">Ders/Çizelge</th><th class="n">Açık</th><th>Rehber öğretmen</th><th>Durum</th><th style="text-align:right">İşlemler</th></tr></thead><tbody>${S.classes.map(c => {
         const st = EP.clsStat(S, c), o = EP.classOpen(S, c).tot, rh = EP.rehberOf(S, c);
         return `<tr>
-          <td><input data-cls="${c.id}" data-f="name" value="${esc(c.name)}" style="width:92px"></td>
-          <td class="n"><input type="number" min="0" max="12" data-cls="${c.id}" data-f="grade" value="${c.grade}" title="0 = Hazırlık Sınıfı" style="width:62px">${+c.grade === 0 ? '<div class="small muted">Hazırlık</div>' : ''}</td>
-          <td><select data-cls="${c.id}" data-f="shift"><option value="full" ${c.shift === 'full' ? 'selected' : ''}>Tam gün</option><option value="morning" ${c.shift === 'morning' ? 'selected' : ''}>Sabahçı</option><option value="afternoon" ${c.shift === 'afternoon' ? 'selected' : ''}>Öğlenci</option></select></td>
-          <td><select data-cls="${c.id}" data-f="homeRoomId" style="max-width:140px"><option value="">—</option>${(S.rooms || []).map(r => `<option value="${r.id}" ${c.homeRoomId === r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select></td>
-          <td class="n">${st.tot}${st.tg ? '/' + st.tg : ''}</td>
+          <td><input data-cls="${c.id}" data-f="name" value="${esc(c.name)}" style="width:74px"></td>
+          <td class="n"><input type="number" min="0" max="12" data-cls="${c.id}" data-f="grade" value="${c.grade}" title="0 = Hazırlık Sınıfı" style="width:54px">${+c.grade === 0 ? '<div class="small muted">Hazırlık</div>' : ''}</td>
+          ${showShift ? `<td><select data-cls="${c.id}" data-f="shift" style="width:104px"><option value="full" ${c.shift === 'full' ? 'selected' : ''}>Tam gün</option><option value="morning" ${c.shift === 'morning' ? 'selected' : ''}>Sabahçı</option><option value="afternoon" ${c.shift === 'afternoon' ? 'selected' : ''}>Öğlenci</option></select></td>` : ''}
+          <td><select data-cls="${c.id}" data-f="homeRoomId" style="width:100%;max-width:130px"><option value="">—</option>${(S.rooms || []).map(r => `<option value="${r.id}" ${c.homeRoomId === r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select></td>
+          <td class="n" style="white-space:nowrap">${st.tot}${st.tg ? '/' + st.tg : ''}</td>
           <td class="n">${o}</td>
-          <td><select data-cls="${c.id}" data-f="rehber" style="max-width:190px"><option value="">${rh && !c.rehber ? 'Otomatik: ' + esc(tName(S.teachers.find(t => t.id === rh))) : '— Seçilmedi —'}</option>${S.teachers.map(t => `<option value="${t.id}" ${c.rehber === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></td>
+          <td><select data-cls="${c.id}" data-f="rehber" style="width:100%;max-width:175px"><option value="">${rh && !c.rehber ? 'Oto: ' + esc(tName(S.teachers.find(t => t.id === rh))) : '— Seçilmedi —'}</option>${S.teachers.map(t => `<option value="${t.id}" ${c.rehber === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></td>
           <td>${st.tot > o ? '<span class="tag" style="background:var(--errBg);color:var(--err)">Sığmıyor</span>' : st.tg && st.tot < st.tg ? `<span class="tag" style="background:var(--warnBg);color:var(--warn)">${st.tg - st.tot} eksik</span>` : '<span class="tag" style="background:var(--okBg);color:var(--ok)">Uygun</span>'}</td>
-          <td style="text-align:right;white-space:nowrap"><button class="btn sm" data-act="goCls" data-id="${c.id}">Dersler</button> <button class="btn sm ghost" data-act="clsSlots" data-id="${c.id}">${op === c.id ? 'Kapat' : 'Saatler'}</button> <button class="btn sm ghost" data-act="delCls" data-id="${c.id}">Sil</button></td>
-        </tr>${op === c.id ? `<tr><td colspan="9">${matrix('cls', c)}</td></tr>` : ''}`;
+          <td style="text-align:right;white-space:nowrap"><button class="btn sm" data-act="goCls" data-id="${c.id}">Dersler</button> <button class="btn sm ghost" data-act="clsSlots" data-id="${c.id}">${op === c.id ? 'Kapat' : 'Saat'}</button> <button class="btn sm danger-ghost" data-act="delCls" data-id="${c.id}">Sil</button></td>
+        </tr>${op === c.id ? `<tr><td colspan="${colSpan}">${matrix('cls', c)}</td></tr>` : ''}`;
       }).join('')}</tbody></table></div>` : '<div class="empty">Henüz şube yok. “Toplu sınıf ekle” ile başlayın.</div>');
   }
 
@@ -1045,7 +1072,7 @@
     const pool = EP.poolFor(S, T, c.grade);
     const showAdv = Boolean(S.ui.showAdvCards) || cards.some(x => x.coTeacherId || x.syncGroup);
     const pill = (l, v, okv) => `<span class="pill ${okv === undefined ? '' : okv ? 'ok' : 'warn'}">${l}: ${v}</span>`;
-    const tbl = (rows, empty) => rows.length ? `<div class="scroll"><table class="tbl">${TH_CARD(false, showAdv)}<tbody>${rows.map(x => cardRow(x, false, showAdv)).join('')}</tbody></table></div>` : `<p class="small muted" style="padding:6px 0">${empty}</p>`;
+    const tbl = (rows, empty) => rows.length ? `<div class="scroll"><table class="tbl tbl-compact">${TH_CARD(false, showAdv)}<tbody>${rows.map(x => cardRow(x, false, showAdv)).join('')}</tbody></table></div>` : `<p class="small muted" style="padding:6px 0">${empty}</p>`;
     const subjOpts = [...SK].sort((a, b) => SN(a).localeCompare(SN(b), 'tr')).map(k => {
       const ex = EP.findClassSubjCard(S, c.id, k);
       return `<option value="${k}" ${ex ? 'disabled' : ''}>${esc(SN(k))} · ${esc(SB(k))}${ex ? ' (Bu sınıfta zaten atanmış)' : ''}</option>`;
@@ -1287,7 +1314,7 @@
         <select data-ui="kf"><option value="">Tüm türler</option><option value="zorunlu" ${kf === 'zorunlu' ? 'selected' : ''}>Zorunlu</option><option value="secmeli" ${kf === 'secmeli' ? 'selected' : ''}>Seçmeli</option><option value="ek" ${kf === 'ek' ? 'selected' : ''}>Ek</option><option value="dis" ${kf === 'dis' ? 'selected' : ''}>Branş dışı atananlar</option></select>
         <label class="row small" style="gap:6px"><input type="checkbox" data-ui="only" ${only ? 'checked' : ''}> Sadece öğretmensizler</label>
         <label class="row small" style="gap:6px;margin-left:auto"><input type="checkbox" data-ui="showAdvCards" ${S.ui.showAdvCards ? 'checked' : ''}> Eş Öğretmen / Ortak Blok</label></div>
-      ${rows.length ? `<div class="card scroll" style="padding:6px"><table class="tbl">${TH_CARD(true, Boolean(S.ui.showAdvCards) || rows.some(x => x.coTeacherId || x.syncGroup))}<tbody>${rows.map(c => cardRow(c, true, Boolean(S.ui.showAdvCards) || rows.some(x => x.coTeacherId || x.syncGroup))).join('')}</tbody></table></div>` : '<div class="empty">Gösterilecek ders kartı yok.</div>'}`;
+      ${rows.length ? `<div class="card scroll" style="padding:6px"><table class="tbl tbl-compact">${TH_CARD(true, Boolean(S.ui.showAdvCards) || rows.some(x => x.coTeacherId || x.syncGroup))}<tbody>${rows.map(c => cardRow(c, true, Boolean(S.ui.showAdvCards) || rows.some(x => x.coTeacherId || x.syncGroup))).join('')}</tbody></table></div>` : '<div class="empty">Gösterilecek ders kartı yok.</div>'}`;
   }
 
   function vDersler() {
@@ -1345,7 +1372,7 @@
       const st = EP.clsStat(S, x), ok = (!st.tg || st.tot === st.tg) && (!st.lim || st.s === st.lim) && !st.noT;
       return `<div class="tl ${x.id === c.id ? 'on' : ''}" data-act="csel" data-id="${x.id}"><div><b>${esc(x.name)}</b><small>${st.tot}${st.tg ? '/' + st.tg : ''} saat${st.lim ? ` · seçmeli ${st.s}/${st.lim}` : ''}${st.noT ? ` · ${st.noT} öğretmensiz` : ''}</small></div><span class="pill ${ok ? 'ok' : 'warn'}">${ok ? 'Tamam' : 'Eksik'}</span></div>`;
     }).join('');
-    return head + tabs + `<div class="board" style="grid-template-columns:260px minmax(0,1fr)"><div class="tlist">${list}</div><div class="diag" style="gap:14px">${classPanel(c, T)}</div></div>`;
+    return head + tabs + `<div class="board" style="grid-template-columns:192px minmax(0,1fr)"><div class="tlist">${list}</div><div class="diag" style="gap:14px">${classPanel(c, T)}</div></div>`;
   }
 
   /* 8. Kural ve Kısıt Yönetimi */
@@ -1375,15 +1402,15 @@
       : r.type === 'forbid' ? `${SN(r.a)} şu derslere gelmesin: ${(r.periods || []).map(p => (+p + 1) + '.').join(', ') || '—'}`
       : `${SN(r.a)} ile ${SN(r.b)} aynı sınıfta aynı güne düşmesin.`;
     const title = r => r.type === 'diff' ? 'Farklı gün kuralı' : r.type === 'lunch' ? 'Öğle arası blok koruması' : r.type === 'forbid' ? 'Saat yasağı' : 'Aynı gün olmasın';
-    return H('Kural ve Kısıt Yönetimi', '4 seviyeli kısıt önceliklerini (HARD / HIGH / NORMAL / PREFERENCE) ve özel dağıtım kurallarını tek tıkla yönetin.') +
+    return H('Kural ve Kısıt Yönetimi', '4 seviyeli kısıt önceliklerini (Zorunlu · Yüksek · Normal · Tercih) ve özel dağıtım kurallarını tek tıkla yönetin.') +
       `<div class="card"><div class="diag">${S.rules.filter(r => r.type !== 'tclass').map(r => `<div class="msg ${r.on ? '' : 'info'}" style="align-items:center">
         <button class="sw ${r.on ? 'on' : ''}" data-act="ruleTog" data-id="${r.id}"></button>
         <div><b>${title(r)}</b><div class="small">${esc(desc(r))}</div></div>
         <div class="row" style="gap:6px">
           <select data-rule="${r.id}" data-f="level" style="min-height:34px;font-size:12.5px">
-            ${[['HARD', 'Zorunlu (HARD)'], ['HIGH', 'Yüksek (HIGH)'], ['NORMAL', 'Normal'], ['PREFERENCE', 'Tercih']].map(([k, l]) => `<option value="${k}" ${(r.level || 'HARD') === k ? 'selected' : ''}>${l}</option>`).join('')}
+            ${[['HARD', 'Zorunlu (Kesin)'], ['HIGH', 'Yüksek Öncelik'], ['NORMAL', 'Normal'], ['PREFERENCE', 'Tercih']].map(([k, l]) => `<option value="${k}" ${(r.level || 'HARD') === k ? 'selected' : ''}>${l}</option>`).join('')}
           </select>
-          ${r.type === 'diff' || r.type === 'lunch' ? '' : `<button class="btn sm ghost" data-act="ruleDel" data-id="${r.id}">Sil</button>`}
+          ${r.type === 'diff' || r.type === 'lunch' ? '' : `<button class="btn sm danger-ghost" data-act="ruleDel" data-id="${r.id}">Sil</button>`}
         </div></div>`).join('')}</div></div>
       <div class="grid2" style="margin-top:16px">
         <div class="card"><h2>Saat yasağı ekle</h2><p class="small muted" style="margin:6px 0 10px">Örnek: Beden Eğitimi ilk derse gelmesin.</p>
@@ -1524,7 +1551,7 @@
     if (includeRoom) viewList.push(['room', 'Derslik']);
     const tabs = `<div class="row" style="justify-content:space-between;margin-bottom:12px"><div class="tabs">${viewList.map(t => `<button data-act="view" data-v="${t[0]}" class="${v === t[0] ? 'on' : ''}">${t[1]}</button>`).join('')}</div>
       <div class="row">
-        ${v === 'sinif' || v === 'ogr' || v === 'room' ? `<select data-ui="ent">${ents.map(e => `<option value="${e.id}" ${e.id === ent.id ? 'selected' : ''}>${esc(e.name)}</option>`).join('')}</select>` : ''}
+        ${v === 'sinif' || v === 'ogr' || v === 'room' ? `<div class="ent-nav"><button class="btn sm ghost" data-act="entStep" data-d="-1" title="Önceki" aria-label="Önceki" ${ents.length <= 1 ? 'disabled' : ''}>◀</button><select data-ui="ent">${ents.map(e => `<option value="${e.id}" ${e.id === ent.id ? 'selected' : ''}>${esc(e.name)}</option>`).join('')}</select><button class="btn sm ghost" data-act="entStep" data-d="1" title="Sonraki" aria-label="Sonraki" ${ents.length <= 1 ? 'disabled' : ''}>▶</button></div>` : ''}
         <button class="btn sm ${bulkMode || bulkSel.size ? 'pri' : ''}" data-act="toggleBulkLock" title="Kilitli veya açık dersleri seçip topluca kilitleyin/açın">${bulkMode ? '✓ Toplu Kilit Seçimi Açık' : 'Toplu Kilit Seçimi'}${bulkSel.size ? ` (${bulkSel.size})` : ''}</button>
       </div></div>`;
     let bulkBar = '';
@@ -1710,11 +1737,11 @@
           <button class="btn sm pri" data-act="solve" ${running || !tot ? 'disabled' : ''}>Baştan dağıt</button>
           <button class="btn sm" data-act="fill" ${running || !o.un.length ? 'disabled' : ''}>Dağıtılmayanları dağıt</button>
           <button class="btn sm" data-act="improve" ${running || o.un.length || !tot ? 'disabled' : ''}>İyileştir</button>
-          <button class="btn sm" data-act="stop" ${running ? '' : 'disabled'}>Durdur</button>
-          <button class="btn sm" data-act="maxFinish" ${running ? '' : 'disabled'} title="Şu ana kadar dağıtılan dersleri şablona işler ve bitirir; yerleşmeyenler altta listelenir">Maksimumda bitir</button>
+          ${running ? `<button class="btn sm danger-ghost" data-act="stop">Durdur</button>
+          <button class="btn sm" data-act="maxFinish" title="Şu ana kadar dağıtılan dersleri şablona işler ve bitirir; yerleşmeyenler altta listelenir">Maksimumda bitir</button>` : ''}
           <button class="btn sm" data-act="quickSavePlan" ${running || !pl ? 'disabled' : ''} title="Mevcut ders dağıtımını kayıtlı dağıtımlar listesine ekler (Ctrl+S)">Dağıtımı Kaydet</button>
-          <button class="btn sm ghost" data-act="clearPlan" ${running || !pl ? 'disabled' : ''}>Temizle</button>
           <button class="btn sm ghost" data-act="verify">Kontrol et</button>
+          <button class="btn sm danger-ghost" data-act="clearPlan" ${running || !pl ? 'disabled' : ''}>Temizle</button>
         </div>
         <div class="row" style="gap:6px">
           <select data-ui="prio" style="min-height:34px;font-size:13px" aria-label="Öncelik" title="Dağıtım önceliği"><option value="gaps" ${S.ui.prio === 'gaps' ? 'selected' : ''}>Boşlukları azalt</option><option value="bal" ${S.ui.prio === 'bal' ? 'selected' : ''}>Dengeli dağıt</option></select>
@@ -1753,17 +1780,21 @@
       eng + toolBar + activePanel + board(o, true) + reasonsHtml(o);
   }
 
-  /* 12. Haftalık Ders Programları */
+  /* 9. Haftalık Ders Programları */
   function vTimetables() {
-    const o = EP.occ(S);
+    const o = EP.occ(S), lkCnt = EP.lockedIds(S).length, openLk = Boolean(S.ui.ttLockOpen);
+    const bar = `<div class="dtools">
+      <button class="btn sm ${openLk ? 'on' : ''}" data-act="ttLock">Toplu Kilitleme (${lkCnt})</button>
+    </div>`;
     return H('Haftalık Ders Programları', 'Sınıf, öğretmen, derslik ve tam çarşaf görünümleri. Gün başlığına çift tıklayarak günü kapatıp açabilir, boş hücreye çift tıklayarak saati kapatıp açabilir, dolu derse çift tıklayarak kilitleyebilirsiniz.',
-      `<button class="btn pri" data-step="reports">Resmi Belge Önizle / Yazdır</button>`) + lockToolsCard() + board(o, true);
+      `<button class="btn pri" data-step="reports">Resmi Belge Önizle / Yazdır</button>`) + bar + (openLk ? lockToolsCard().replace('<details class="card"', '<details class="card" open') : '') + board(o, true);
   }
 
-  /* 13. Analiz ve İstatistikler */
+  /* 10. Analiz ve İstatistikler */
   function vAnalytics() {
     const o = EP.occ(S), tot = o.m.blocks.length;
-    return H('Analiz ve İstatistikler', 'Öğretmen günlük yük dağılımı, boş pencere analizi, ardışık ders sayıları ve sınıf çizelge uyumu.') +
+    return H('Analiz ve İstatistikler', 'Öğretmen günlük yük dağılımı, boş pencere analizi, ardışık ders sayıları ve sınıf çizelge uyumu. Öğretmen adına tıklayarak programına doğrudan geçebilirsiniz.',
+      `<button class="btn pri" data-act="goQualityReport">Kalite Raporu / Yazdır</button>`) +
       EP.vQuality(S, o, tot) +
       `<div class="card scroll" style="margin-top:14px"><h2 style="margin-bottom:8px">Sınıf Doluluk ve Çizelge Uyumu</h2>
         <table class="tbl"><thead><tr><th>Şube</th><th class="n">Düzey</th><th class="n">Zorunlu</th><th class="n">Seçmeli</th><th class="n">Toplam</th><th class="n">Açık Saat</th><th class="n">Öğretmensiz</th></tr></thead><tbody>
@@ -1784,11 +1815,14 @@
     const eligibleCount = S.teachers.filter(t => !EP.isDutyExempt(S, t)).length;
     const exemptCount = S.teachers.length - eligibleCount;
     const assignedCount = S.teachers.filter(t => !EP.isDutyExempt(S, t) && EP.dutyOf(t).d >= 0).length;
+    const stratLbl = strategy === 'min_lessons' ? 'En az dersli gün' : strategy === 'max_lessons' ? 'En çok dersli gün' : 'Dengeli';
 
-    const head = H('Okul Nöbeti Oluşturma', 'Öğretmenlerin haftalık ders programına göre (en az dersli gün, en çok dersli gün veya dengeli) haftalık ve aylık nöbet çizelgesi oluşturun. Nöbet tutar/tutmaz ayarını tek tıkla yönetin.',
-      `<button class="btn pri" data-act="dutyAuto">Haftalık Nöbeti Oluştur</button><button class="btn" data-act="buildMonthlyDuty">Aylık Nöbeti Oluştur</button><button class="btn" data-act="clubAuto">Sosyal Kulüpleri Dağıt</button>`);
+    const head = H('Okul Nöbeti Oluşturma', 'Öğretmenlerin haftalık ders programına göre haftalık veya aylık nöbet çizelgesi oluşturun. Nöbet tutar/tutmaz ayarını tek tıkla yönetin.',
+      dtab === 'monthly'
+        ? `<button class="btn pri" data-act="buildMonthlyDuty">Aylık Nöbeti Oluştur</button><button class="btn" data-act="clubAuto">Sosyal Kulüpleri Dağıt</button>`
+        : `<button class="btn pri" data-act="dutyAuto">Haftalık Nöbeti Oluştur</button><button class="btn" data-act="clubAuto">Sosyal Kulüpleri Dağıt</button>`);
 
-    const tabs = `<div class="tabs" style="margin-bottom:14px;display:inline-flex">
+    const tabs = `<div class="tabs" style="margin-bottom:12px;display:inline-flex">
       <button data-act="dutyTab" data-v="weekly" class="${dtab === 'weekly' ? 'on' : ''}">Haftalık Nöbet (Sabit Haftalık)</button>
       <button data-act="dutyTab" data-v="monthly" class="${dtab === 'monthly' ? 'on' : ''}">Aylık Nöbet Çizelgesi (${esc(ym)})</button>
     </div>`;
@@ -1797,11 +1831,11 @@
       <div class="kpi"><small>Nöbet Tutan Öğretmen</small><b>${eligibleCount}</b><span>${assignedCount} kişiye gün atandı</span></div>
       <div class="kpi"><small>Nöbet Tutmayan / Muaf</small><b>${exemptCount}</b><span>Okul müdürü, müdür yrd. &amp; muaf</span></div>
       <div class="kpi"><small>Nöbet Yeri</small><b>${pl.length}</b><span>${esc(pl.join(', '))}</span></div>
-      <div class="kpi"><small>Dağıtım Kuralı</small><b style="font-size:15px">${strategy === 'min_lessons' ? 'En az dersli gün' : strategy === 'max_lessons' ? 'En çok dersli gün' : 'Dengeli'}</b><span>${avoidZeroDay ? 'Boş güne verilmez' : 'Tüm açık günler'}</span></div>
+      <div class="kpi"><small>Dağıtım Kuralı</small><b style="font-size:15px">${stratLbl}</b><span>${avoidZeroDay ? 'Boş güne verilmez' : 'Tüm açık günler'}</span></div>
     </div>`;
 
-    const settingsCard = `<div class="card" style="margin-bottom:14px">
-      <h2>Nöbet Ayarları, Yerler ve Dağıtım Kuralı</h2>
+    const settingsCard = `<details class="card" id="dutySets" data-details-ui="dutySetsOpen" style="margin-bottom:14px;padding:12px 16px" ${S.ui.dutySetsOpen ? 'open' : ''}>
+      <summary>Nöbet Ayarları, Yerler ve İdareciler <span class="small muted">· ${esc(pl.join(', '))} · ${stratLbl}</span></summary>
       <div class="fields" style="margin-top:12px">
         <label class="f" style="grid-column:span 2">Nöbet yerleri (virgülle ayırın)<input data-dplaces="1" value="${esc(pl.join(', '))}" placeholder="Bahçe, 1. Kat Koridor, 2. Kat Koridor, Zemin Kat"></label>
         <label class="f" style="grid-column:span 2">Öğretmen ders programına göre dağıtım kuralı<select data-dutycfg="strategy">${EP.DUTY_STRATEGIES.map(([k, l]) => `<option value="${k}" ${strategy === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
@@ -1811,7 +1845,7 @@
       <div class="fields"><datalist id="mylistDuty">${vpNames.map(n => `<option value="${esc(n)}">`).join('')}</datalist>
         ${GUN.slice(0, D).map((g, d) => `<label class="f">${g}<input list="mylistDuty" data-dadmin="${d}" value="${esc(adm[d] || '')}" placeholder="Müdür Yardımcısı"></label>`).join('')}
       </div>
-    </div>`;
+    </details>`;
 
     if (dtab === 'monthly') {
       const mRows = (dCfg.monthly && dCfg.monthly[ym]) || EP.buildMonthlyDuty(S, ym, mMode);
@@ -1911,7 +1945,7 @@
           <button class="btn pri" data-act="exDutyPdf">Haftalık PDF İndir (.pdf)</button>
           <button class="btn" data-act="exDutyPrint">Yazdır</button>
           <button class="btn" data-act="exDutyWord">Word (.doc)</button>
-          <button class="btn ghost" data-act="dutyClear">Nöbetleri Temizle</button>
+          <button class="btn danger-ghost" data-act="dutyClear">Nöbetleri Temizle</button>
         </div>
       </div>
       <table class="tbl"><thead><tr><th style="width:120px">Gün</th>${pl.map(p => `<th>${esc(p)}</th>`).join('')}<th>Nöbetçi İdareci</th></tr></thead><tbody>
@@ -1937,7 +1971,7 @@
           <td><b>${esc(t.name)}</b><br><small class="muted">${esc(t.branch || '')}${ak ? ' · ' + esc(EP.dutyExemptReason(S, t)) : ''}</small></td>
           <td>
             <div class="row" style="gap:8px;flex-wrap:nowrap">
-              <button class="sw ${exempt ? '' : 'on'}" data-act="toggleDutyExempt" data-id="${t.id}" ${ak ? 'disabled title="İdareci ve rehber öğretmenler otomatik muaftır"' : 'title="Nöbet Tutar / Nöbet Tutmaz değiştir"'}></button>
+              <button class="sw sw-ok ${exempt ? '' : 'on'}" data-act="toggleDutyExempt" data-id="${t.id}" ${ak ? 'disabled title="İdareci ve rehber öğretmenler otomatik muaftır"' : 'title="Nöbet Tutar / Nöbet Tutmaz değiştir"'}></button>
               <span class="pill ${exempt ? 'warn' : 'ok'}">${exempt ? 'Nöbet Tutmaz' : 'Nöbet Tutar'}</span>
             </div>
           </td>
@@ -1969,7 +2003,7 @@
         </div>
         <div class="card"><h2>Yeni Başlangıç &amp; Örnekler</h2>
           <div class="row" style="margin-top:12px">
-            <button class="btn" data-act="newEmpty">Boş proje</button>
+            <button class="btn danger-ghost" data-act="newEmpty" title="Mevcut tüm verileri temizleyip sıfırdan boş proje başlatır">Boş proje</button>
             <button class="btn" data-act="demo">Örnek okul</button>
             <button class="btn" data-act="demoX">Çakışmalı örnek</button>
           </div>
@@ -2007,7 +2041,7 @@
           <table class="tbl" style="margin-top:8px"><tbody>
             <tr><td>Okul, öğretmen, sınıf, ders ve kurallar</td><td><span class="pill ok">Girişsiz Ücretsiz</span></td></tr>
             <tr><td>Otomatik ve manuel ders dağıtımı</td><td><span class="pill ok">Girişsiz Ücretsiz</span></td></tr>
-            <tr><td>PDF, Excel, Word, PNG, CSV çıktıları</td><td><span class="pill ${logged ? 'ok' : 'warn'}">${logged ? 'Filigransız Temiz' : 'Filigranlı Ücretsiz'}</span></td></tr>
+            <tr><td>PDF, Yazdır, Word ve WhatsApp PNG çıktıları</td><td><span class="pill ${logged ? 'ok' : 'warn'}">${logged ? 'Filigransız Temiz' : 'Filigranlı Ücretsiz'}</span></td></tr>
             <tr><td>Filigransız Resmi Çıktı &amp; Bulut Senkronizasyonu</td><td><span class="pill ok">Ücretsiz EvrakPlus Üyeliği</span></td></tr>
           </tbody></table>
         </div>
@@ -2018,9 +2052,11 @@
   function vSystem() {
     const info = sysInfo;
     const upd = updateInfo;
-    return H('Sistem ve Güncellemeler', 'Uygulama sürümü, otomatik güncelleme ve görünüm ayarları.') +
+    const plansCnt = Array.isArray(S.savedPlans) ? S.savedPlans.length : 0;
+    return H('Sistem ve Güncellemeler', 'Uygulama sürümü, hızlı mini yama güncellemeleri ve görünüm ayarları.') +
       `<div class="grid2">
         <div class="card"><h2>Görünüm ve Tema</h2>
+          <p class="small muted" style="margin-top:6px">Üst çubuktaki tema düğmesiyle de tek tıkla açık ve koyu tema arasında geçiş yapabilirsiniz.</p>
           <div class="row" style="margin-top:12px">
             <button class="btn ${(S.ui.theme || 'auto') === 'auto' ? 'pri' : ''}" data-act="setTheme" data-v="auto">Sistem Varsayılanı</button>
             <button class="btn ${S.ui.theme === 'light' ? 'pri' : ''}" data-act="setTheme" data-v="light">Açık Tema</button>
@@ -2041,33 +2077,46 @@
             <a class="btn sm ghost" href="${EP.EVRAKPLUS_SITE_URL}" target="_blank" rel="noopener">evrakplus.com</a>
           </div>
         </div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <h2>Altyapı ve Yerel Veri Durumu</h2>
+        <div class="kpis" style="margin:12px 0 0">
+          <div class="kpi"><small>Güncelleme Altyapısı</small><b style="font-size:16px;color:var(--ok)">Akıllı Mini Yama</b><span>~1–2 MB hızlı güncelleme</span></div>
+          <div class="kpi"><small>Yerel Veri Güvenliği</small><b style="font-size:16px">${bridge ? 'SQLite + Otomatik Kayıt' : 'Tarayıcı Yerel Deposu'}</b><span>${plansCnt} kayıtlı dağıtım</span></div>
+          <div class="kpi"><small>Çevrimdışı Dağıtım</small><b style="font-size:16px;color:var(--ok)">Hazır</b><span>İnternetsiz tam çalışma</span></div>
+        </div>
       </div>`;
   }
 
   /* 16. Yardım ve Destek */
   function vHelp() {
-    const logged = isMember();
-    return H('Yardım ve Destek', 'Kısayollar, hızlı kullanım rehberi ve EvrakPlus hesap bağlantıları.') +
+    return H('Yardım ve Destek', 'Klavye ve fare kısayolları, 5 adımda hızlı başlangıç rehberi ve EvrakPlus destek bağlantıları.') +
       `<div class="grid2">
         <div class="card"><h2>Klavye &amp; Fare Kısayolları</h2>
           <table class="tbl" style="margin-top:8px"><tbody>
             <tr><td><b>Çift tık (dolu hücre)</b></td><td>Dersi anında kilitle / kilidi aç</td></tr>
-            <tr><td><b>Ctrl + Tık / Toplu Kilit Seçimi</b></td><td>Birden fazla dersi seçip topluca kilitle veya kilidini aç</td></tr>
+            <tr><td><b>Çift tık (gün başlığı)</b></td><td>O günü tamamen kapat / aç</td></tr>
+            <tr><td><b>Çift tık (boş hücre)</b></td><td>O ders saatini kapat / aç</td></tr>
+            <tr><td><b>Ctrl + Tık / Toplu Kilit</b></td><td>Birden fazla dersi seçip topluca kilitle veya aç</td></tr>
             <tr><td><b>Sol tık (dolu hücre)</b></td><td>İşlem menüsü: kilitle, öğretmen değiştir, çıkar veya sil</td></tr>
             <tr><td><b>Sağ tık (boş hücre)</b></td><td>O sınıfın zorunlu/seçmeli derslerini blok seçerek yerleştir</td></tr>
             <tr><td><b>Sürükle-Bırak</b></td><td>Dersi yeşil boş hücreye taşı veya yeşil çerçeveli dersle yer değiştir</td></tr>
+            <tr><td><b>Ctrl + B</b></td><td>Sol menüyü aç / gizle (tam ekran şablon görünümü)</td></tr>
+            <tr><td><b>Ctrl + S</b></td><td>Mevcut ders dağıtımını kayıtlı dağıtımlara anında ekle</td></tr>
             <tr><td><b>Ctrl + Z / Ctrl + Y</b></td><td>40 adımlı Geri Al / Yinele</td></tr>
             <tr><td><b>Esc</b></td><td>Açık pencere, menü veya seçimi kapat</td></tr>
           </tbody></table>
         </div>
-        <div class="card"><h2>EvrakPlus Hesap ve Destek</h2>
-          ${logged
-            ? `<div class="msg ok" style="margin:10px 0 12px"><span class="ic">✓</span><div><b>EvrakPlus Üye Girişi Aktif</b><div class="sug">${esc(authUser.displayName || authUser.username || 'EvrakPlus Üyesi')} — Tüm PDF, Word, Excel ve PNG çıktılarınız filigransız ve temizdir.</div></div><span></span></div>`
-            : `<p class="small muted" style="margin:8px 0 12px">Henüz giriş yapılmadı. Ücretsiz EvrakPlus hesabınızla giriş yaptığınızda tüm çıktılarınız otomatik olarak filigransız olur.</p>`}
-          <div class="diag" style="margin-top:10px">
-            ${logged
-              ? `<button class="btn pri" data-step="account">EvrakPlus Hesabım'a Git</button><button class="btn ghost" data-act="logoutAuth">Oturumu Kapat</button>`
-              : `<button class="btn pri" data-act="openLogin">EvrakPlus ile Giriş Yap / Üye Ol</button>`}
+        <div class="card"><h2>5 Adımda Hızlı Başlangıç</h2>
+          <table class="tbl" style="margin-top:8px"><tbody>
+            <tr><td><b>1. Okul Ayarları</b></td><td>Okul türü, günlük ders sayısı, zil saatleri ve yöneticileri girin.</td></tr>
+            <tr><td><b>2. Öğretmen &amp; Şube</b></td><td>Excel / e-Okul'dan toplu aktarın veya tek tıkla ekleyin.</td></tr>
+            <tr><td><b>3. Görevlendirmeler</b></td><td>Boştaki derslere otomatik öğretmen atayıp gerekirse düzenleyin.</td></tr>
+            <tr><td><b>4. Dağıtım &amp; Kilit</b></td><td><b>Baştan dağıt</b> ile programı oluşturun, beğendiklerinizi çift tıkla kilitleyin.</td></tr>
+            <tr><td><b>5. Resmi Çıktılar</b></td><td>PDF, Yazdır, Word, Ek Ders Özeti veya toplu WhatsApp PNG alın.</td></tr>
+          </tbody></table>
+          <div class="row" style="margin-top:14px">
+            <button class="btn pri" data-step="account">EvrakPlus Hesabım</button>
             <a class="btn" href="${EP.EVRAKPLUS_SITE_URL}" target="_blank" rel="noopener">EvrakPlus Ana Sayfa (evrakplus.com)</a>
           </div>
         </div>
@@ -2940,6 +2989,36 @@
         S.ui.dtool = S.ui.dtool === a.dataset.v ? '' : a.dataset.v;
         save();
         render();
+        break;
+      case 'ttab':
+        S.ui.ttab = a.dataset.v || 'profile';
+        save();
+        render();
+        break;
+      case 'ttLock':
+        S.ui.ttLockOpen = !S.ui.ttLockOpen;
+        save();
+        render();
+        break;
+      case 'entStep': {
+        const v = S.ui.view || 'sinif';
+        const ents = v === 'room' ? (S.rooms || []) : (v === 'sinif' || v === 'csh') ? S.classes : S.teachers;
+        if (ents.length > 1) {
+          const curIdx = Math.max(0, ents.findIndex(e => e.id === S.ui.ent));
+          const delta = Number(a.dataset.d || 1);
+          const nextIdx = (curIdx + delta + ents.length) % ents.length;
+          S.ui.ent = ents[nextIdx].id;
+          closePop(); sel = ''; save(); render();
+        }
+      } break;
+      case 'openTeacherTT':
+        S.ui.view = 'ogr';
+        S.ui.ent = a.dataset.id || '';
+        go('timetables');
+        break;
+      case 'goQualityReport':
+        S.ui.rtab = 'kq';
+        go('reports');
         break;
       case 'undo': if (undo.length) { redo.push(JSON.stringify(S)); S = JSON.parse(undo.pop()); sel = ''; commit(); } break;
       case 'redo': if (redo.length) { undo.push(JSON.stringify(S)); S = JSON.parse(redo.pop()); sel = ''; commit(); } break;
@@ -4002,6 +4081,12 @@
       S.ui.tpQ = e.target.value;
       const q = e.target.value.toLocaleLowerCase('tr').trim();
       document.querySelectorAll('.tpool-row').forEach(r => { r.style.display = !q || r.dataset.q.includes(q) ? '' : 'none'; });
+      return;
+    }
+    if (e.target.id === 'tSearchQ') {
+      S.ui.tSearchQ = e.target.value;
+      const q = e.target.value.toLocaleLowerCase('tr').trim();
+      document.querySelectorAll('.tmain-item').forEach(r => { r.style.display = !q || r.dataset.q.includes(q) ? '' : 'none'; });
       return;
     }
     if (e.target.id === 'tAssignQ') {

@@ -938,7 +938,10 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
     </div>
     <div class="card scroll"><h2 style="margin-bottom:8px">Öğretmen yük ve boş pencere raporu</h2>
       <table class="tbl"><thead><tr><th>Öğretmen</th><th class="n">Haftalık</th>${EP.GK.slice(0, D).map(x => `<th class="n">${x}</th>`).join('')}<th class="n">Gün</th><th class="n">Boş pencere</th><th class="n">En uzun ardışık</th><th class="n">Tercih ihlali</th></tr></thead>
-      <tbody>${q.map(x => `<tr><td><b>${EP.esc(x.t.name)}</b><br><small class="muted">${EP.esc(x.t.branch || '')}</small></td><td class="n">${x.load}</td>${x.per.map(n => `<td class="n" style="color:${n ? 'inherit' : 'var(--mute)'}">${n}</td>`).join('')}<td class="n">${x.days}</td><td class="n" style="color:${x.gaps ? 'var(--warn)' : 'inherit'}">${x.gaps}</td><td class="n" style="color:${x.maxc >= 6 ? 'var(--warn)' : 'inherit'}">${x.maxc}</td><td class="n" style="color:${x.pv ? 'var(--err)' : 'inherit'}">${x.pv}</td></tr>`).join('')}</tbody></table></div>`;
+      <tbody>${q.map(x => {
+        const gapPill = x.gaps === 0 ? 'ok' : x.gaps <= 2 ? 'warn' : 'err';
+        return `<tr><td><button type="button" class="tlink" data-act="openTeacherTT" data-id="${EP.esc(x.t.id)}" title="Bu öğretmenin haftalık ders programını aç">${EP.esc(x.t.name)}</button><br><small class="muted">${EP.esc(x.t.branch || '')}</small></td><td class="n"><b>${x.load}</b></td>${x.per.map(n => `<td class="n" style="color:${n ? 'inherit' : 'var(--mute)'}">${n}</td>`).join('')}<td class="n">${x.days}</td><td class="n"><span class="pill ${gapPill}">${x.gaps}</span></td><td class="n" style="color:${x.maxc >= 6 ? 'var(--warn)' : 'inherit'}">${x.maxc}</td><td class="n" style="color:${x.pv ? 'var(--err)' : 'inherit'}">${x.pv}</td></tr>`;
+      }).join('')}</tbody></table></div>`;
   }
 
   function vRapor(S, H, isMember) {
@@ -974,20 +977,20 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
         </div>
       </div>
       <div class="grid2" style="gap:10px">
-        <div class="row" style="gap:8px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--soft)">
-          <div style="flex:1;min-width:140px"><b class="small" style="display:block;margin-bottom:4px">Sınıflar WhatsApp Görseli</b>
+        <div class="wa-box">
+          <div><b class="small" style="display:block;margin-bottom:4px">Sınıflar WhatsApp Görseli</b>
             <select data-ui="waCls" style="width:100%">${S.classes.map(c => `<option value="${c.id}" ${waClsId === c.id ? 'selected' : ''}>${EP.esc(c.name)}</option>`).join('')}</select>
           </div>
-          <div class="row" style="gap:6px;align-self:flex-end">
+          <div class="row" style="gap:6px">
             <button class="btn sm" data-act="waSingle" data-kind="c" ${waClsId ? '' : 'disabled'}>Sınıf Görseli (.png)</button>
             <button class="btn sm ghost" data-act="waBatch" data-kind="c" ${S.classes.length ? '' : 'disabled'}>Tüm Sınıflar (${S.classes.length})</button>
           </div>
         </div>
-        <div class="row" style="gap:8px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--soft)">
-          <div style="flex:1;min-width:160px"><b class="small" style="display:block;margin-bottom:4px">Öğretmenler WhatsApp Görseli</b>
+        <div class="wa-box">
+          <div><b class="small" style="display:block;margin-bottom:4px">Öğretmenler WhatsApp Görseli</b>
             <select data-ui="waTch" style="width:100%">${S.teachers.map(t => `<option value="${t.id}" ${waTchId === t.id ? 'selected' : ''}>${EP.esc(t.name)}</option>`).join('')}</select>
           </div>
-          <div class="row" style="gap:6px;align-self:flex-end">
+          <div class="row" style="gap:6px">
             <button class="btn sm" data-act="waSingle" data-kind="t" ${waTchId ? '' : 'disabled'}>Öğretmen Görseli (.png)</button>
             <button class="btn sm ghost" data-act="waBatch" data-kind="t" ${S.teachers.length ? '' : 'disabled'}>Tüm Öğretmenler (${S.teachers.length})</button>
           </div>
@@ -1002,8 +1005,7 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
       ctl = `<select data-ui="${k}" aria-label="Seçim"><option value="">Tümü (${ents.length})</option>${ents.map(e => `<option value="${e.id}" ${sel === e.id ? 'selected' : ''}>${EP.esc(e.name)}</option>`).join('')}</select>
         <button class="btn pri" data-act="exPdf">PDF İndir (.pdf)</button>
         <button class="btn" data-act="exPrint">Yazdır</button>
-        <button class="btn" data-act="exWord">Word (.doc)</button>
-        <button class="btn" data-act="exPng2" ${sel ? '' : 'disabled title="Önce tek sınıf veya öğretmen seçin"'}>Seçili WhatsApp Görseli (.png)</button>`;
+        <button class="btn" data-act="exWord">Word (.doc)</button>`;
     } else if (tab === 'cs' || tab === 'ts') {
       ctl = `<button class="btn pri" data-act="exPdf">PDF İndir (.pdf)</button>
         <button class="btn" data-act="exPrint">Yazdır</button>

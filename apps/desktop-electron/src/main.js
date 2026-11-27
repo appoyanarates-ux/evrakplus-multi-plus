@@ -10,7 +10,7 @@ import { resolveEmbeddedPaths } from './engine-paths.js';
 import { extractZipSafe } from './updater.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const APP_VERSION = '2.7.0';
+export const APP_VERSION = '2.7.1';
 export const APP_NAME = 'DersMatrix Ultimate';
 
 async function loadMultiSolver() {
