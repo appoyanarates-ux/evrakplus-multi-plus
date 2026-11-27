@@ -88,6 +88,12 @@
     const root = document.documentElement;
     if (t === 'light' || t === 'dark') root.setAttribute('data-theme', t);
     else root.removeAttribute('data-theme');
+    const isDark = t === 'dark' || (t !== 'light' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const tb = $('#bToggleTheme');
+    if (tb) {
+      tb.textContent = isDark ? '☀️' : '🌙';
+      tb.title = isDark ? 'Açık temaya geç' : 'Koyu temaya geç';
+    }
   }
 
   function applySideCollapsed() {
@@ -207,7 +213,7 @@
     $('#mX').addEventListener('click', () => { M.innerHTML = ''; });
   }
 
-  const APP_VER = (bridge && bridge.appVersion) || '2.5.2';
+  const APP_VER = (bridge && bridge.appVersion) || '2.6.0';
   let updateInfo = null;
   let updateProgress = null;
   const isMember = () => Boolean(authUser && (authUser.loggedIn || authUser.entitlementValid));
@@ -443,21 +449,22 @@
     return `<option value="">— Öğretmen seç —</option>` + og(br === EP.REHB ? 'Tüm öğretmenler (rehber)' : 'Branş öğretmenleri (' + esc(br) + ')', a) + og('Branş dışı okutabilenler', b) + og('Diğer öğretmenler (branş dışı atanır)', c);
   }
 
-  function cardRow(c, showClass) {
+  function cardRow(c, showClass, showAdv) {
     const coOpts = `<option value="">— Yok (Tek öğretmen) —</option>` + S.teachers.filter(t => t.id !== c.teacherId).map(t => `<option value="${t.id}" ${c.coTeacherId === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('');
+    const advCell = showAdv ? `<td>
+        <select data-card="${c.id}" data-f="coTeacherId" style="max-width:165px;margin-bottom:4px" title="Bölünmüş / Atölye dersi için 2. eş öğretmen" aria-label="2. Eş öğretmen">${coOpts}</select>
+        <input data-card="${c.id}" data-f="syncGroup" value="${esc(c.syncGroup || '')}" placeholder="Ortak grup (ör. 11-Sec-A)" title="Aynı grup adını taşıyan farklı şubelerin seçmeli dersleri aynı saatte eş zamanlı yerleşir" style="width:165px;min-height:30px;padding:3px 7px;font-size:12px">
+      </td>` : '';
     return `<tr>${showClass ? `<td>${esc(cName(c.classId))}</td>` : ''}
       <td><span class="tag ${colorOf(c.subj)}">${esc(SS(c.subj))}</span> ${esc(SN(c.subj))}${showClass ? `<br><small class="muted">${c.kind === 'secmeli' ? 'Seçmeli' : c.kind === 'ek' ? 'Ek / branş dışı' : 'Zorunlu'}</small>` : ''}${c.syncGroup ? `<br><span class="tag" style="background:var(--okBg);color:var(--ok)">Ortak: ${esc(c.syncGroup)}</span>` : ''}</td>
-      <td class="n"><input type="number" min="1" max="12" data-card="${c.id}" data-f="hours" value="${c.hours}" style="width:66px" aria-label="Haftalık saat"></td>
-      <td>${blkSelect(c)}</td>
-      <td><select data-card="${c.id}" data-f="teacherId" style="max-width:245px" aria-label="Öğretmen">${tOptions(c)}</select><div style="margin-top:4px">${modeTag(c)}</div></td>
-      <td>
-        <select data-card="${c.id}" data-f="coTeacherId" style="max-width:170px;margin-bottom:4px" title="Bölünmüş / Atölye dersi için 2. eş öğretmen" aria-label="2. Eş öğretmen">${coOpts}</select>
-        <input data-card="${c.id}" data-f="syncGroup" value="${esc(c.syncGroup || '')}" placeholder="Ortak grup (ör. 11-Sec-A)" title="Aynı grup adını taşıyan farklı şubelerin seçmeli dersleri aynı saatte eş zamanlı yerleşir" style="width:170px;min-height:30px;padding:3px 7px;font-size:12px">
-      </td>
-      <td><select data-card="${c.id}" data-f="roomId" style="max-width:135px" aria-label="Derslik"><option value="">Varsayılan</option>${(S.rooms || []).map(r => `<option value="${r.id}" ${c.roomId === r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select></td>
+      <td class="n"><input type="number" min="1" max="12" data-card="${c.id}" data-f="hours" value="${c.hours}" style="width:56px;padding:0 6px" aria-label="Haftalık saat"></td>
+      <td style="max-width:175px">${blkSelect(c).replace('<select ', '<select style="max-width:168px" ')}</td>
+      <td><select data-card="${c.id}" data-f="teacherId" style="max-width:205px" aria-label="Öğretmen">${tOptions(c)}</select><div style="margin-top:4px">${modeTag(c)}</div></td>
+      ${advCell}
+      <td><select data-card="${c.id}" data-f="roomId" style="max-width:110px" aria-label="Derslik"><option value="">Varsayılan</option>${(S.rooms || []).map(r => `<option value="${r.id}" ${c.roomId === r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select></td>
       <td style="text-align:right"><button class="btn sm ghost" data-act="delCard" data-id="${c.id}">Sil</button></td></tr>`;
   }
-  const TH_CARD = cls => `<thead><tr>${cls ? '<th>Sınıf</th>' : ''}<th>Ders</th><th class="n">Saat</th><th>Blok</th><th>Öğretmen</th><th>2. Eş Öğretmen / Ortak Blok</th><th>Derslik</th><th></th></tr></thead>`;
+  const TH_CARD = (cls, adv) => `<thead><tr>${cls ? '<th>Sınıf</th>' : ''}<th>Ders</th><th class="n">Saat</th><th>Blok</th><th>Öğretmen</th>${adv ? '<th>2. Eş Öğretmen / Ortak Blok</th>' : ''}<th>Derslik</th><th></th></tr></thead>`;
 
   /* =========================================================================
    * 18 MENÜ GÖRÜNÜMLERİ
@@ -510,11 +517,9 @@
   /* 2. Okul Ayarları */
   function adminCard() {
     const s = S.school, my = EP.myList(S);
-    return `<div class="card" style="margin-top:14px"><h2>Okul Yönetimi ve Dönem Bilgileri</h2>
-      <p class="small muted" style="margin-top:4px">Burada belirlenen Okul Adı, Okul Müdürü ve Müdür Yardımcısı bilgileri tüm raporlarda, resmi çıktılarda, nöbet çizelgelerinde ve WhatsApp görsellerinde otomatik kullanılır.</p>
+    return `<div class="card" style="margin-top:14px"><h2>Dönem Tarihleri ve Ek Nöbetçi İdareciler</h2>
+      <p class="small muted" style="margin-top:4px">Okul Müdürü ve Müdür Yardımcısı bilgilerini yukarıdaki karttan girebilirsiniz; burada dönem tarihlerini ve nöbet çizelgesinde görev alacak diğer müdür yardımcılarını tanımlayın.</p>
       <div class="fields" style="margin-top:12px">
-        <label class="f">Okul müdürü adı<input data-k="school.mudur" value="${esc(s.mudur || '')}" placeholder="Ad Soyad"></label>
-        <label class="f">Müdür yardımcısı adı (Program / İmza)<input data-k="school.mudurYardimcisi" value="${esc(s.mudurYardimcisi || '')}" placeholder="Ad Soyad"></label>
         <label class="f">Dönem<select data-k="school.donem">${EP.DONEM.map(v => `<option value="${v}" ${(s.donem || '') === v ? 'selected' : ''}>${v || '— seçilmedi —'}</option>`).join('')}</select></label>
         <label class="f">Dönem başlangıcı<input type="date" data-k="school.donemBas" value="${esc(s.donemBas || '')}"></label>
         <label class="f">Dönem bitişi<input type="date" data-k="school.donemBit" value="${esc(s.donemBit || '')}"></label>
@@ -592,7 +597,7 @@
         </div>
         ${s.educationMode === 'dual_shift' ? `<div class="msg info" style="margin:10px 0 6px"><span class="ic">i</span><div><b>İkili Öğretim Aktif:</b> Sabahçı sınıflar <b>${esc(EP.times(S, 'morning')[0] || '')}</b>, Öğlenci sınıflar <b>${esc(EP.times(S, 'afternoon')[0] || '')}</b> saatinde başlar; sınıf çıktılarında her devrenin kendi zil saati görünür.</div><span></span></div>` : ''}
         <p class="small muted" style="margin:10px 0 6px">Her dersin başlangıç ve bitiş saatini aşağıdan tek tek özelleştirebilirsiniz (program şablonlarında, PDF/Yazdır belgelerinde ve WhatsApp görsellerinde birebir görünür):</p>
-        <div style="max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:6px 8px">
+        <div style="border:1px solid var(--line);border-radius:10px;padding:6px 8px">
           <table class="tbl"><thead><tr><th style="width:74px">Ders</th><th>Başlangıç</th><th>Bitiş</th></tr></thead><tbody>
           ${tm.map((rng, p) => {
             const parts = rng.split('–');
@@ -1029,17 +1034,21 @@
       return !EP.findClassSubjCard(S, c.id, k);
     });
     const pool = EP.poolFor(S, T, c.grade);
+    const showAdv = Boolean(S.ui.showAdvCards) || cards.some(x => x.coTeacherId || x.syncGroup);
     const pill = (l, v, okv) => `<span class="pill ${okv === undefined ? '' : okv ? 'ok' : 'warn'}">${l}: ${v}</span>`;
-    const tbl = (rows, empty) => rows.length ? `<div class="scroll"><table class="tbl">${TH_CARD(false)}<tbody>${rows.map(x => cardRow(x, false)).join('')}</tbody></table></div>` : `<p class="small muted" style="padding:6px 0">${empty}</p>`;
+    const tbl = (rows, empty) => rows.length ? `<div class="scroll"><table class="tbl">${TH_CARD(false, showAdv)}<tbody>${rows.map(x => cardRow(x, false, showAdv)).join('')}</tbody></table></div>` : `<p class="small muted" style="padding:6px 0">${empty}</p>`;
     const subjOpts = [...SK].sort((a, b) => SN(a).localeCompare(SN(b), 'tr')).map(k => {
       const ex = EP.findClassSubjCard(S, c.id, k);
       return `<option value="${k}" ${ex ? 'disabled' : ''}>${esc(SN(k))} · ${esc(SB(k))}${ex ? ' (Bu sınıfta zaten atanmış)' : ''}</option>`;
     }).join('');
     return `<div class="card"><div class="row" style="justify-content:space-between"><div><h2>${esc(c.name)}</h2><p class="small muted" style="margin-top:4px">${EP.gradeLabel(c.grade)} · ${T ? esc(T.ad) : 'okul türü yok'} · Aynı sınıfa aynı ders iki kez atanamaz</p></div>
       <div class="row">${pill('Toplam', st.tot + (st.tg ? '/' + st.tg : ''), st.tg ? st.tot === st.tg : undefined)}${pill('Zorunlu', st.z)}${st.lim ? pill('Seçmeli', st.s + '/' + st.lim, st.s === st.lim) : ''}${st.e ? pill('Ek', st.e) : ''}</div></div>
-      <div class="row" style="margin:12px 0">
-        <button class="btn sm ${missingZ.length ? 'pri' : ''}" data-act="tplMissing" data-id="${c.id}">Eksik zorunlu dersleri ekle${missingZ.length ? ` (${missingZ.length})` : ''}</button>
-        ${s.length ? `<button class="btn sm" data-act="copySec" data-id="${c.id}">Seçmelileri ${EP.gradeLabel(c.grade)} diğer şubelerine kopyala</button><button class="btn sm ghost" data-act="clearSec" data-id="${c.id}">Seçmelileri temizle</button>` : ''}
+      <div class="row" style="margin:12px 0;justify-content:space-between">
+        <div class="row">
+          <button class="btn sm ${missingZ.length ? 'pri' : ''}" data-act="tplMissing" data-id="${c.id}">Eksik zorunlu dersleri ekle${missingZ.length ? ` (${missingZ.length})` : ''}</button>
+          ${s.length ? `<button class="btn sm" data-act="copySec" data-id="${c.id}">Seçmelileri ${EP.gradeLabel(c.grade)} diğer şubelerine kopyala</button><button class="btn sm ghost" data-act="clearSec" data-id="${c.id}">Seçmelileri temizle</button>` : ''}
+        </div>
+        <label class="row small" style="gap:6px;cursor:pointer" title="Bölünmüş atölye dersleri için 2. eş öğretmen ve ortak seçmeli blok grubu sütununu göster"><input type="checkbox" data-ui="showAdvCards" ${showAdv ? 'checked' : ''}> Eş Öğretmen / Ortak Blok</label>
       </div>
       <h3>Sınıftaki zorunlu dersler (${z.length})</h3>${tbl(z, 'Zorunlu ders yok. Aşağıdaki zorunlu dersler havuzundan tek tek veya “Eksik zorunlu dersleri ekle” ile toplu ekleyebilirsiniz.')}
       <h3 style="margin-top:14px">Seçmeli dersler${st.lim ? ` · ${st.s}/${st.lim} saat` : ''}</h3>
@@ -1267,8 +1276,9 @@
         <select data-ui="cf"><option value="">Tüm sınıflar</option>${S.classes.map(c => `<option value="${c.id}" ${cf === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
         <select data-ui="tf"><option value="">Tüm öğretmenler</option>${S.teachers.map(t => `<option value="${t.id}" ${tf === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
         <select data-ui="kf"><option value="">Tüm türler</option><option value="zorunlu" ${kf === 'zorunlu' ? 'selected' : ''}>Zorunlu</option><option value="secmeli" ${kf === 'secmeli' ? 'selected' : ''}>Seçmeli</option><option value="ek" ${kf === 'ek' ? 'selected' : ''}>Ek</option><option value="dis" ${kf === 'dis' ? 'selected' : ''}>Branş dışı atananlar</option></select>
-        <label class="row small" style="gap:6px"><input type="checkbox" data-ui="only" ${only ? 'checked' : ''}> Sadece öğretmensizler</label></div>
-      ${rows.length ? `<div class="card scroll" style="padding:6px"><table class="tbl">${TH_CARD(true)}<tbody>${rows.map(c => cardRow(c, true)).join('')}</tbody></table></div>` : '<div class="empty">Gösterilecek ders kartı yok.</div>'}`;
+        <label class="row small" style="gap:6px"><input type="checkbox" data-ui="only" ${only ? 'checked' : ''}> Sadece öğretmensizler</label>
+        <label class="row small" style="gap:6px;margin-left:auto"><input type="checkbox" data-ui="showAdvCards" ${S.ui.showAdvCards ? 'checked' : ''}> Eş Öğretmen / Ortak Blok</label></div>
+      ${rows.length ? `<div class="card scroll" style="padding:6px"><table class="tbl">${TH_CARD(true, Boolean(S.ui.showAdvCards) || rows.some(x => x.coTeacherId || x.syncGroup))}<tbody>${rows.map(c => cardRow(c, true, Boolean(S.ui.showAdvCards) || rows.some(x => x.coTeacherId || x.syncGroup))).join('')}</tbody></table></div>` : '<div class="empty">Gösterilecek ders kartı yok.</div>'}`;
   }
 
   function vDersler() {
@@ -1678,39 +1688,60 @@
   }
 
   function vDagitim() {
-    const o = EP.occ(S), tot = o.m.blocks.length, pl = tot - o.un.length, L = S.last, errs = pc.filter(x => x.lvl === 'err').length;
+    const o = EP.occ(S), tot = o.m.blocks.length, pl = tot - o.un.length, L = S.last;
+    const errs = pc.filter(x => x.lvl === 'err').length;
+    const warns = pc.filter(x => x.lvl === 'warn').length;
+    const lkCnt = EP.lockedIds(S).length;
+    const plansCnt = Array.isArray(S.savedPlans) ? S.savedPlans.length : 0;
+    const dtool = S.ui.dtool || (errs ? 'diag' : '');
 
-    const eng = `<div class="card" style="margin-bottom:12px;padding:14px 16px">
+    const eng = `<div class="card" style="margin-bottom:10px;padding:12px 16px">
       <div class="row" style="justify-content:space-between">
-        <div class="row">
-          <button class="btn pri" data-act="solve" ${running || !tot ? 'disabled' : ''}>Baştan dağıt</button>
-          <button class="btn" data-act="fill" ${running || !o.un.length ? 'disabled' : ''}>Dağıtılmayanları dağıt</button>
-          <button class="btn" data-act="improve" ${running || o.un.length || !tot ? 'disabled' : ''}>İyileştir</button>
-          <button class="btn" data-act="stop" ${running ? '' : 'disabled'}>Durdur</button>
-          <button class="btn" data-act="maxFinish" ${running ? '' : 'disabled'} title="Şu ana kadar dağıtılan dersleri şablona işler ve bitirir; yerleşmeyenler altta listelenir">Maksimumda bitir</button>
-          <button class="btn" data-act="quickSavePlan" ${running || !pl ? 'disabled' : ''} title="Mevcut ders dağıtımını kayıtlı dağıtımlar listesine ekler">Dağıtımı Kaydet</button>
-          <button class="btn ghost" data-act="clearPlan" ${running || !pl ? 'disabled' : ''}>Dağıtımı temizle</button>
-          <button class="btn ghost" data-act="verify">Kontrol et</button>
+        <div class="row" style="gap:6px">
+          <button class="btn sm pri" data-act="solve" ${running || !tot ? 'disabled' : ''}>Baştan dağıt</button>
+          <button class="btn sm" data-act="fill" ${running || !o.un.length ? 'disabled' : ''}>Dağıtılmayanları dağıt</button>
+          <button class="btn sm" data-act="improve" ${running || o.un.length || !tot ? 'disabled' : ''}>İyileştir</button>
+          <button class="btn sm" data-act="stop" ${running ? '' : 'disabled'}>Durdur</button>
+          <button class="btn sm" data-act="maxFinish" ${running ? '' : 'disabled'} title="Şu ana kadar dağıtılan dersleri şablona işler ve bitirir; yerleşmeyenler altta listelenir">Maksimumda bitir</button>
+          <button class="btn sm" data-act="quickSavePlan" ${running || !pl ? 'disabled' : ''} title="Mevcut ders dağıtımını kayıtlı dağıtımlar listesine ekler (Ctrl+S)">Dağıtımı Kaydet</button>
+          <button class="btn sm ghost" data-act="clearPlan" ${running || !pl ? 'disabled' : ''}>Temizle</button>
+          <button class="btn sm ghost" data-act="verify">Kontrol et</button>
         </div>
-        <div class="row">
-          <select data-ui="prio" aria-label="Öncelik" title="Dağıtım önceliği"><option value="gaps" ${S.ui.prio === 'gaps' ? 'selected' : ''}>Öğretmen boşluklarını azalt</option><option value="bal" ${S.ui.prio === 'bal' ? 'selected' : ''}>Dengeli dağıt</option></select>
-          <select data-ui="time" aria-label="Süre sınırı" title="Süre sınırı">${EP.TIME_PRESETS.map(([v, l]) => `<option value="${v}" ${+S.ui.time === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <div class="row" style="gap:6px">
+          <select data-ui="prio" style="min-height:34px;font-size:13px" aria-label="Öncelik" title="Dağıtım önceliği"><option value="gaps" ${S.ui.prio === 'gaps' ? 'selected' : ''}>Boşlukları azalt</option><option value="bal" ${S.ui.prio === 'bal' ? 'selected' : ''}>Dengeli dağıt</option></select>
+          <select data-ui="time" style="min-height:34px;font-size:13px" aria-label="Süre sınırı" title="Süre sınırı">${EP.TIME_PRESETS.map(([v, l]) => `<option value="${v}" ${+S.ui.time === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
         </div>
       </div>
-      <div class="stats">
+      <div class="stats" style="margin-top:8px;padding-top:8px">
         <div><small>Yerleşen blok</small><b id="kPl">${running ? (live.placed || 0) : pl} / ${tot}</b><div class="bar"><i id="kBar" style="width:${tot ? Math.round(100 * (running ? (live.placed || 0) : pl) / tot) : 0}%"></i></div></div>
         <div><small>Yerleşmeyen</small><b id="kUn" style="color:${o.un.length && !running ? 'var(--err)' : 'inherit'}">${running ? Math.max(0, tot - (live.placed || 0)) : o.un.length}</b></div>
         <div><small>Kalite / Durum</small><b id="kNd">${running ? 'Optimize ediliyor…' : (L && L.qualityScore != null ? L.qualityScore + '/100' : (pl === tot && tot ? 'Tam' : '—'))}</b></div>
         <div><small>Süre</small><b id="kMs">${running ? fmtMs(live.ms) : L ? fmtMs(L.ms) : '—'}</b> <span id="kSt" class="small muted">${L && !running ? esc(L.note || '') : (running ? 'En iyi program aranıyor…' : '')}</span></div>
       </div></div>`;
 
-    const diag = `<details class="card" id="diagBox" style="margin-bottom:12px;padding:12px 16px" ${errs || S.ui.diagOpen ? 'open' : ''}><summary>Ön kontrol: ${errs ? errs + ' çakışma' : 'çakışma yok'}${pc.filter(x => x.lvl === 'warn').length ? ', ' + pc.filter(x => x.lvl === 'warn').length + ' uyarı' : ''}</summary>
-      <div class="diag" style="margin-top:10px">${diagHtml()}
-      ${(errs || (L && L.status === 'partial')) ? `<div class="msg info"><span class="ic">?</span><div><b>Hangi öğretmenin kapalı saatini açarsam çözülür?</b><div class="sug">Kapalı saati olan her öğretmen için kısa deneme yapılarak sorunu tek başına çözen öğretmenler bulunur.</div>${relaxHtml()}</div><button class="btn sm" data-act="relax" ${running ? 'disabled' : ''}>Öneri bul</button></div>` : ''}
-      </div></details>`;
+    const toolBar = `<div class="dtools">
+      <button class="btn sm ${errs ? 'err-pill' : ''} ${dtool === 'diag' ? 'on' : ''}" data-act="dtool" data-v="diag">Ön Kontrol: ${errs ? errs + ' çakışma' : warns ? 'çakışma yok, ' + warns + ' uyarı' : 'temiz ✓'}</button>
+      <button class="btn sm ${dtool === 'reh' ? 'on' : ''}" data-act="dtool" data-v="reh">Ortak Rehberlik Saati</button>
+      <button class="btn sm ${dtool === 'lock' ? 'on' : ''}" data-act="dtool" data-v="lock">Toplu Kilitleme (${lkCnt})</button>
+      <button class="btn sm ${dtool === 'saved' ? 'on' : ''}" data-act="dtool" data-v="saved">Kayıtlı Dağıtımlar (${plansCnt})</button>
+      ${plansCnt ? `<button class="btn sm ghost" data-act="comparePlans">Karşılaştır</button>` : ''}
+    </div>`;
+
+    let activePanel = '';
+    if (dtool === 'diag') {
+      activePanel = `<div class="card" id="diagBox" style="margin-bottom:12px;padding:12px 16px"><div class="diag">${diagHtml()}
+        ${(errs || (L && L.status === 'partial')) ? `<div class="msg info"><span class="ic">?</span><div><b>Hangi öğretmenin kapalı saatini açarsam çözülür?</b><div class="sug">Kapalı saati olan her öğretmen için kısa deneme yapılarak sorunu tek başına çözen öğretmenler bulunur.</div>${relaxHtml()}</div><button class="btn sm" data-act="relax" ${running ? 'disabled' : ''}>Öneri bul</button></div>` : ''}
+      </div></div>`;
+    } else if (dtool === 'reh') {
+      activePanel = rehSlotCard(true);
+    } else if (dtool === 'lock') {
+      activePanel = lockToolsCard().replace('<details class="card"', '<details class="card" open');
+    } else if (dtool === 'saved') {
+      activePanel = savedPlansCard(true).replace('<details class="card"', '<details class="card" open');
+    }
 
     return H('Dağıtım ve Program', 'Dolu derse çift tıklayarak kilitleyin/açın; gün başlığına çift tıklayarak o günü kapatın/açın; boş hücreye çift tıklayarak o saati kapatın/açın.') +
-      eng + diag + rehSlotCard(false) + lockToolsCard() + savedPlansCard(true) + board(o, true) + reasonsHtml(o);
+      eng + toolBar + activePanel + board(o, true) + reasonsHtml(o);
   }
 
   /* 12. Haftalık Ders Programları */
@@ -2838,7 +2869,8 @@
     applyTheme(S.ui.theme || 'auto');
     applySideCollapsed();
 
-    $('#sideMenu').innerHTML = EP.MENUS.map((m, i) => `<a href="#${m[0]}" class="${step === m[0] ? 'on' : ''}" data-step="${m[0]}"><i>${i + 1}</i><span>${m[1]}</span>${m[0] === 'auto_schedule' && pc.some(x => x.lvl === 'err') ? '<b class="dot" title="Çakışma var"></b>' : ''}</a>`).join('');
+    const menuGroups = { 0: 'Kurulum', 7: 'Program & Analiz', 10: 'Yönetim & Çıktı', 12: 'Sistem' };
+    $('#sideMenu').innerHTML = EP.MENUS.map((m, i) => (menuGroups[i] ? `<div class="menu-grp">${menuGroups[i]}</div>` : '') + `<a href="#${m[0]}" class="${step === m[0] ? 'on' : ''}" data-step="${m[0]}"><i>${i + 1}</i><span>${m[1]}</span>${m[0] === 'auto_schedule' && pc.some(x => x.lvl === 'err') ? '<b class="dot" title="Çakışma var"></b>' : ''}</a>`).join('');
     $('#topSchoolName').textContent = S.school.name + ' · ' + S.school.year + (S.school.donem && S.school.donem !== 'Yıllık' ? ' · ' + S.school.donem : '');
     const rtEl = $('#topRuntime');
     rtEl.textContent = isMember() ? ('Üye: ' + (authUser.displayName || authUser.username)) : (bridge ? 'Masaüstü' : webApi ? 'Web' : 'Çevrimdışı');
@@ -2886,6 +2918,19 @@
         S.ui.sideCollapsed = !S.ui.sideCollapsed;
         save();
         applySideCollapsed();
+        break;
+      case 'toggleTheme': {
+        const cur = S.ui.theme || 'auto';
+        const isDark = cur === 'dark' || (cur !== 'light' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        S.ui.theme = isDark ? 'light' : 'dark';
+        save();
+        applyTheme(S.ui.theme);
+        toast(S.ui.theme === 'dark' ? 'Koyu tema açıldı.' : 'Açık tema açıldı.');
+      } break;
+      case 'dtool':
+        S.ui.dtool = S.ui.dtool === a.dataset.v ? '' : a.dataset.v;
+        save();
+        render();
         break;
       case 'undo': if (undo.length) { redo.push(JSON.stringify(S)); S = JSON.parse(undo.pop()); sel = ''; commit(); } break;
       case 'redo': if (redo.length) { undo.push(JSON.stringify(S)); S = JSON.parse(redo.pop()); sel = ''; commit(); } break;
@@ -3524,6 +3569,7 @@
       case 'quickSavePlan': {
         const entry = saveCurrentPlanSnapshot('', S.last && S.last.note ? S.last.note : '');
         if (!entry) break;
+        S.ui.dtool = 'saved';
         commit();
         toast(`"${entry.name}" (${entry.placed}/${entry.total} blok) kaydedildi.`);
       } break;
@@ -4054,6 +4100,16 @@
     if ((e.ctrlKey || e.metaKey) && !e.target.closest('input,textarea,select')) {
       if (e.key === 'z') { e.preventDefault(); $('#bUndo').click(); }
       if (e.key === 'y') { e.preventDefault(); $('#bRedo').click(); }
+      if (e.key.toLowerCase() === 'b') { e.preventDefault(); $('#bToggleSide')?.click(); }
+      if (e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        if (step === 'auto_schedule' || step === 'timetables') {
+          const entry = saveCurrentPlanSnapshot('', S.last && S.last.note ? S.last.note : '');
+          if (entry) { commit(); toast(`"${entry.name}" hızlı kaydedildi.`); }
+        } else {
+          save(); toast('Değişiklikler yerel olarak kaydedildi.');
+        }
+      }
     }
     if (e.key === 'Escape') {
       if ($('#modalRoot').innerHTML) { $('#modalRoot').innerHTML = ''; return; }

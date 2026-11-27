@@ -1,5 +1,14 @@
 # DersMatrix Ultimate (by EvrakPlus) — Değişiklik Geçmişi (CHANGELOG)
 
+## [2.6.0] - 2026-11-27
+
+### Tasarım ve Kullanışlılık (UX) Yenilemesi
+- **Kurumsal Mavi Tema & Tek Tık Koyu/Açık Tema (`🌙/☀️`)**: Ana vurgu rengi DersMatrix logo ve banner kimliğiyle uyumlu Kurumsal Mavi (`#1a56db` / koyu temada `#4f8cff`) olarak yenilendi; kırmızı yalnızca hata/silme/kilit durumlarına ayrıldı. Üst çubuğa tek tık açık/koyu tema değiştirme düğmesi eklendi.
+- **Kırpılmayan Ana Panel Banner'ı & Sağ-Alt Bildirimler**: Ana Panel banner altındaki *"by EvrakPlus"* yazısının kesilmesi giderildi; bildirim kutuları (`toast`) ortadaki butonları kapatmaması için sağ alt köşeye alındı.
+- **İlk Ekranda Görünen Dağıtım Şablonu**: `Dağıtım ve Program` sayfasındaki 4 üst akordeon tek satırlık kompakt 4 butonlu araç çubuğuna (*Ön Kontrol · Ortak Rehberlik · Toplu Kilitleme · Kayıtlı Dağıtımlar*) dönüştürüldü; program şablonu sayfa açılır açılmaz ekranda görünür.
+- **Gruplu & İnce Koyu Sol Menü + Klavye Kısayolları**: Sol menü 4 gruba (*Kurulum · Program & Analiz · Yönetim & Çıktı · Sistem*) ayrıldı, koyu temaya uyumlu ince kaydırma çubuğu eklendi, kapanış geçişi keskinleştirildi ve `Ctrl+B` (menü aç/kapa) ile `Ctrl+S` (hızlı dağıtım kaydet) kısayolları eklendi.
+- **`Ders Görevlendirmeleri`, `Okul Ayarları` ve `Raporlar` Sadeleştirmesi**: `2. Eş Öğretmen / Ortak Blok` sütunu isteğe bağlı anahtara bağlanarak tablo yatay taşması giderildi; zil saatleri tablosunun iç kaydırması ve tekrar eden yönetici kutuları kaldırıldı; `Raporlar ve Çıktılar` ekranında canlı A4 önizleme hemen görünür hâle getirildi.
+
 ## [2.5.2] - 2026-11-27
 
 ### Hata Düzeltmesi

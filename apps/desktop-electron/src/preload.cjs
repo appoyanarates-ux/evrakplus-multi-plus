@@ -7,7 +7,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('evrakplusBridge', Object.freeze({
   platform: 'windows-electron',
   appName: 'DersMatrix Ultimate',
-  appVersion: '2.5.2',
+  appVersion: '2.6.0',
   listProjects: () => ipcRenderer.invoke('project:list'),
   loadProject: id => ipcRenderer.invoke('project:load', id),
   saveProject: project => ipcRenderer.invoke('project:save', project),

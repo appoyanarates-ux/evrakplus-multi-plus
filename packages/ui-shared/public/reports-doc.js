@@ -950,7 +950,7 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
       `<button class="btn pri" data-act="exAllPdf">Tüm Belgeleri PDF İndir (.pdf)</button>`);
     const tabs = `<div class="tabs" style="margin-bottom:12px;display:inline-flex">${RTABS.map(x => `<button data-act="rtab" data-v="${x[0]}" class="${tab === x[0] ? 'on' : ''}">${x[1]}</button>`).join('')}</div>`;
     const vpCur = defaultVicePrincipalName(S);
-    const sets = `<details class="card" style="margin-bottom:12px;padding:12px 16px" ${!r.mudur || !r.gecerli ? 'open' : ''}><summary>Belge bilgileri ve kağıt ayarı <span class="small muted">· Okul Ayarları’ndan otomatik gelir</span> ${!r.mudur || !r.gecerli ? '<span class="tag" style="background:var(--warnBg);color:var(--warn)">eksik</span>' : ''}</summary>
+    const sets = `<details class="card" style="margin-bottom:12px;padding:12px 16px"><summary>Belge bilgileri ve kağıt ayarı <span class="small muted">· Okul Ayarları’ndan otomatik gelir</span> ${!r.mudur || !r.gecerli ? '<span class="tag" style="background:var(--warnBg);color:var(--warn)">eksik</span>' : ''}</summary>
       <div class="fields" style="margin-top:10px">
         <label class="f">Kurum adı (başlıkta)<input data-rep="kurum" value="${EP.esc(r.kurum)}" placeholder="${EP.esc(S.school.name)}"></label>
         <label class="f">Okul müdürü<input data-k="school.mudur" value="${EP.esc(r.mudur)}" placeholder="Ad Soyad"></label>
@@ -979,8 +979,8 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
             <select data-ui="waCls" style="width:100%">${S.classes.map(c => `<option value="${c.id}" ${waClsId === c.id ? 'selected' : ''}>${EP.esc(c.name)}</option>`).join('')}</select>
           </div>
           <div class="row" style="gap:6px;align-self:flex-end">
-            <button class="btn sm pri" data-act="waSingle" data-kind="c" ${waClsId ? '' : 'disabled'}>Sınıf Görseli (.png)</button>
-            <button class="btn sm" data-act="waBatch" data-kind="c" ${S.classes.length ? '' : 'disabled'}>Tüm Sınıflar (${S.classes.length})</button>
+            <button class="btn sm" data-act="waSingle" data-kind="c" ${waClsId ? '' : 'disabled'}>Sınıf Görseli (.png)</button>
+            <button class="btn sm ghost" data-act="waBatch" data-kind="c" ${S.classes.length ? '' : 'disabled'}>Tüm Sınıflar (${S.classes.length})</button>
           </div>
         </div>
         <div class="row" style="gap:8px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--soft)">
@@ -988,8 +988,8 @@ body{margin:0;background:#fff}.doc{width:auto!important;min-height:0!important;p
             <select data-ui="waTch" style="width:100%">${S.teachers.map(t => `<option value="${t.id}" ${waTchId === t.id ? 'selected' : ''}>${EP.esc(t.name)}</option>`).join('')}</select>
           </div>
           <div class="row" style="gap:6px;align-self:flex-end">
-            <button class="btn sm pri" data-act="waSingle" data-kind="t" ${waTchId ? '' : 'disabled'}>Öğretmen Görseli (.png)</button>
-            <button class="btn sm" data-act="waBatch" data-kind="t" ${S.teachers.length ? '' : 'disabled'}>Tüm Öğretmenler (${S.teachers.length})</button>
+            <button class="btn sm" data-act="waSingle" data-kind="t" ${waTchId ? '' : 'disabled'}>Öğretmen Görseli (.png)</button>
+            <button class="btn sm ghost" data-act="waBatch" data-kind="t" ${S.teachers.length ? '' : 'disabled'}>Tüm Öğretmenler (${S.teachers.length})</button>
           </div>
         </div>
       </div>

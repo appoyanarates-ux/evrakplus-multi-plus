@@ -9,7 +9,7 @@ import { SqliteProjectStore } from './sqlite-store.js';
 import { resolveEmbeddedPaths } from './engine-paths.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const APP_VERSION = '2.5.2';
+export const APP_VERSION = '2.6.0';
 export const APP_NAME = 'DersMatrix Ultimate';
 
 async function loadMultiSolver() {
